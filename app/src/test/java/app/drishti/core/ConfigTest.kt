@@ -43,7 +43,8 @@ class ConfigTest {
         assertEquals(400.0, c.nearDistanceMm, 0.0)
         assertEquals(DistanceMethod.ROPE, c.distanceMethod)
         assertEquals(Optotype.TUMBLING_E, c.optotype)
-        assertEquals(true, c.crowded)
+        assertEquals(true, c.crowding.enabled)
+        assertEquals(CrowdingSpec(gapStrokes = 2.5, barThicknessStrokes = 1.0), c.crowdingSpec())
         assertEquals((10 downTo 0).map { it / 10.0 }, c.far.linesLogMAR)
         assertEquals(0.1, c.lineStepLogMAR, 0.0)
         assertEquals(5, c.optotypesPerLine)
@@ -126,6 +127,14 @@ class ConfigTest {
             .with("schema_version", JsonPrimitive(2))
         val e = expectErrors(bad, "far_distance_mm", "min_stroke_px", "schema_version")
         assertTrue(e.errors.size >= 3)
+    }
+
+    @Test
+    fun `crowding spacing must be positive, and disabled crowding gives no bars`() {
+        expectErrors(shipped.withNested("crowding", "bar_gap_strokes", JsonPrimitive(0)), "crowding.bar_gap_strokes")
+        expectErrors(shipped.withNested("crowding", "bar_thickness_strokes", JsonPrimitive(-1)), "crowding.bar_thickness_strokes")
+        val off = AppConfig.parse(shipped.withNested("crowding", "enabled", JsonPrimitive(false)).toString())
+        assertEquals(null, off.crowdingSpec())
     }
 
     @Test

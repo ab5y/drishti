@@ -32,5 +32,8 @@ object OptotypeMath {
     fun strokePx(heightPx: Double): Double = heightPx / GRID
 
     /** False means the letter would be degraded: pixel-limited, must not be shown or scored. */
-    fun minStrokeOk(heightPx: Double, minStrokePx: Double): Boolean = strokePx(heightPx) >= minStrokePx
+    fun minStrokeOk(heightPx: Double, minStrokePx: Double): Boolean = strokePx(heightPx) >= minStrokePx - STROKE_EPS_PX
+
+    /** Absorbs floating-point noise so a stroke of exactly the minimum is accepted. */
+    private const val STROKE_EPS_PX = 1e-9
 }

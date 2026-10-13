@@ -1,7 +1,11 @@
 {
   "schema_version": 1,
   "optotype": "tumbling_E",
-  "crowded": true,
+  "crowding": {
+    "enabled": true,
+    "bar_gap_strokes": 2.5,
+    "bar_thickness_strokes": 1.0
+  },
   "engine": "descending_lines",
   "distance_method": "rope",
   "far_distance_mm": 3000,

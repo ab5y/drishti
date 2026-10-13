@@ -16,7 +16,7 @@ import kotlin.math.roundToLong
 data class AppConfig(
     @SerialName("schema_version") val schemaVersion: Int,
     @SerialName("optotype") val optotype: Optotype,
-    @SerialName("crowded") val crowded: Boolean,
+    @SerialName("crowding") val crowding: CrowdingConfig,
     @SerialName("engine") val engine: EngineKind,
     @SerialName("distance_method") val distanceMethod: DistanceMethod,
     @SerialName("far_distance_mm") val farDistanceMm: Double,
@@ -53,6 +53,10 @@ data class AppConfig(
         )
     }
 
+    /** Crowding bars for the renderer, or null when crowding is off. */
+    fun crowdingSpec(): CrowdingSpec? =
+        if (crowding.enabled) CrowdingSpec(crowding.barGapStrokes, crowding.barThicknessStrokes) else null
+
     /** Returns every problem found; empty means valid. */
     fun validationErrors(): List<String> = buildList {
         if (schemaVersion != SUPPORTED_SCHEMA_VERSION) {
@@ -78,6 +82,10 @@ data class AppConfig(
         if (!(lineStepLogMAR > 0)) add("line_step_logmar must be > 0, was $lineStepLogMAR")
         if (!(quality.maxUnsureFraction in 0.0..1.0)) {
             add("quality.max_unsure_fraction must be in 0..1, was ${quality.maxUnsureFraction}")
+        }
+        if (!(crowding.barGapStrokes > 0)) add("crowding.bar_gap_strokes must be > 0, was ${crowding.barGapStrokes}")
+        if (!(crowding.barThicknessStrokes > 0)) {
+            add("crowding.bar_thickness_strokes must be > 0, was ${crowding.barThicknessStrokes}")
         }
         if (!(pinhole.improvementMinLogMAR >= 0)) {
             add("pinhole.improvement_min_logmar must be >= 0, was ${pinhole.improvementMinLogMAR}")
@@ -149,6 +157,17 @@ data class PinholeConfig(
 ) {
     fun toTestSpec() = TestSpec(practiceLogMAR, practiceTrials, linesLogMAR, referralCutoffLogMAR)
 }
+
+/**
+ * Bars on all four sides of the letter. Gap (letter edge to bar) and bar
+ * thickness are in units of the letter's stroke (1/5 letter height).
+ */
+@Serializable
+data class CrowdingConfig(
+    @SerialName("enabled") val enabled: Boolean,
+    @SerialName("bar_gap_strokes") val barGapStrokes: Double,
+    @SerialName("bar_thickness_strokes") val barThicknessStrokes: Double,
+)
 
 @Serializable
 data class QualityConfig(
