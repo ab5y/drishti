@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "optotype": "tumbling_E",
+  "crowded": true,
+  "engine": "descending_lines",
+  "distance_method": "rope",
+  "far_distance_mm": 3000,
+  "near_distance_mm": 400,
+  "min_stroke_px": 3,
+  "min_lux": 50,
+  "optotypes_per_line": 5,
+  "pass_min_correct": 4,
+  "line_step_logmar": 0.1,
+  "eye_order": "right_first",
+  "quality": {
+    "max_unsure_fraction": 0.2
+  },
+  "far": {
+    "practice_logmar": 1.0,
+    "practice_trials": 1,
+    "lines_logmar": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0],
+    "referral_cutoff_logmar": 0.3
+  },
+  "near": {
+    "practice_logmar": 1.0,
+    "practice_trials": 1,
+    "lines_logmar": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0],
+    "referral_cutoff_logmar": 0.4
+  },
+  "pinhole": {
+    "on_fail": true,
+    "improvement_min_logmar": 0.2,
+    "practice_logmar": 1.0,
+    "practice_trials": 0,
+    "lines_logmar": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0],
+    "referral_cutoff_logmar": 0.3
+  }
+}

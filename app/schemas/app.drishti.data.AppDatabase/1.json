@@ -1,0 +1,127 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "c6295ee0e333ac748d69c685ed594a2f",
+    "entities": [
+      {
+        "tableName": "sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`session_id` TEXT NOT NULL, `token` TEXT NOT NULL, `age` INTEGER, `right_logmar` REAL, `left_logmar` REAL, `near_result` TEXT, `pinhole_improved` INTEGER, `right_referral` TEXT NOT NULL, `left_referral` TEXT NOT NULL, `overall_referral` TEXT NOT NULL, `referral_reason` TEXT NOT NULL, `distance_ok` INTEGER NOT NULL, `light_ok` INTEGER, `responses_ok` INTEGER NOT NULL, `device_id` TEXT NOT NULL, `px_per_mm` REAL NOT NULL, `timestamp` TEXT NOT NULL, `synced` INTEGER NOT NULL, PRIMARY KEY(`session_id`))",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "token",
+            "columnName": "token",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "age",
+            "columnName": "age",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "rightLogMAR",
+            "columnName": "right_logmar",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "leftLogMAR",
+            "columnName": "left_logmar",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "nearResult",
+            "columnName": "near_result",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pinholeImproved",
+            "columnName": "pinhole_improved",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "rightReferral",
+            "columnName": "right_referral",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leftReferral",
+            "columnName": "left_referral",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overallReferral",
+            "columnName": "overall_referral",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "referralReason",
+            "columnName": "referral_reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "distanceOk",
+            "columnName": "distance_ok",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lightOk",
+            "columnName": "light_ok",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "responsesOk",
+            "columnName": "responses_ok",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pxPerMm",
+            "columnName": "px_per_mm",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "synced",
+            "columnName": "synced",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "session_id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c6295ee0e333ac748d69c685ed594a2f')"
+    ]
+  }
+}
