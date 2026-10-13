@@ -38,6 +38,11 @@ fun AppRoot(state: UiState, vm: MainViewModel, xdpi: Double) {
                 val ready = state.readiness as? Readiness.Ready
                 if (ready != null) DebugScreen(state.config, ready.pxPerMm, onBack = { vm.open(Screen.HOME) })
             }
+            Screen.FLOW -> FlowHost(state, vm)
+            Screen.KEY_CAPTURE -> {
+                BackHandler { } // back is captured as a key; leave with Done
+                KeyCaptureScreen(state, vm)
+            }
         }
     }
 }
@@ -78,7 +83,10 @@ private fun HomeScreen(state: UiState.Ready, vm: MainViewModel) {
                 Text("Ruler and letter-size check")
             }
             Button(onClick = { vm.startTest() }, Modifier.fillMaxWidth(), enabled = ready) {
-                Text("Start test")
+                Text("Start screening")
+            }
+            OutlinedButton(onClick = { vm.open(Screen.KEY_CAPTURE) }, Modifier.fillMaxWidth()) {
+                Text("Remote key capture")
             }
             state.notice?.let { Text(it) }
             Text("Last remote key: ${state.lastKey ?: "none"}")

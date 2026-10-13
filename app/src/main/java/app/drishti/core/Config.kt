@@ -23,6 +23,8 @@ data class AppConfig(
     @SerialName("near_distance_mm") val nearDistanceMm: Double,
     @SerialName("min_stroke_px") val minStrokePx: Double,
     @SerialName("min_lux") val minLux: Double,
+    /** Window brightness (0..1] during a test; build sheet section 10 uses 1.0. */
+    @SerialName("test_brightness") val testBrightness: Double,
     @SerialName("optotypes_per_line") val optotypesPerLine: Int,
     @SerialName("pass_min_correct") val passMinCorrect: Int,
     @SerialName("line_step_logmar") val lineStepLogMAR: Double,
@@ -75,6 +77,7 @@ data class AppConfig(
         }
         if (!(minStrokePx > 0)) add("min_stroke_px must be > 0, was $minStrokePx")
         if (!(minLux >= 0)) add("min_lux must be >= 0, was $minLux")
+        if (!(testBrightness > 0 && testBrightness <= 1)) add("test_brightness must be in (0, 1], was $testBrightness")
         if (optotypesPerLine < 1) add("optotypes_per_line must be >= 1, was $optotypesPerLine")
         if (passMinCorrect < 1 || passMinCorrect > optotypesPerLine) {
             add("pass_min_correct must be in 1..optotypes_per_line ($optotypesPerLine), was $passMinCorrect")
@@ -205,6 +208,9 @@ class ConfigException(val errors: List<String>, cause: Throwable? = null) :
 internal const val LOGMAR_EPS = 1e-6
 
 internal fun logMarEquals(a: Double, b: Double) = abs(a - b) <= LOGMAR_EPS
+
+/** Locale-independent formatting for text built in core. */
+internal fun fmt(pattern: String, vararg args: Any?): String = String.format(java.util.Locale.ROOT, pattern, *args)
 
 /** Rounds a logMAR to 2 dp for display / storage, removing binary noise. */
 fun roundLogMAR(v: Double): Double = (v * 100).roundToLong() / 100.0

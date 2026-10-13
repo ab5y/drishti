@@ -81,6 +81,9 @@ data class QualityFlags(
     val voidedTrials: Int,
 )
 
+/** Why a test ended INCONCLUSIVE instead of being scored. */
+enum class AbortReason { PIXEL_LIMITED, LETTER_DOES_NOT_FIT }
+
 data class EngineResult(
     val kind: TestKind,
     /** Last line passed (recorded acuity), or null if none passed. */
@@ -88,6 +91,8 @@ data class EngineResult(
     val decision: Referral,
     val quality: QualityFlags,
     val lines: List<LineResult>,
+    /** Set when the result is INCONCLUSIVE. */
+    val abortReason: AbortReason? = null,
 )
 
 sealed interface Step {

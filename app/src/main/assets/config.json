@@ -12,6 +12,7 @@
   "near_distance_mm": 400,
   "min_stroke_px": 3,
   "min_lux": 50,
+  "test_brightness": 1.0,
   "optotypes_per_line": 5,
   "pass_min_correct": 4,
   "line_step_logmar": 0.1,

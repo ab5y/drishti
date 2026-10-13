@@ -38,6 +38,7 @@ class TestEngine(
     private var scored = 0
     private var unsure = 0
     private var pixelLimited = false
+    private var abortReason: AbortReason? = null
     private var paused = false
     private var distancePauses = 0
     private var voided = 0
@@ -63,6 +64,7 @@ class TestEngine(
             !OptotypeMath.minStrokeOk(heightPx, config.minStrokePx)
         ) {
             pixelLimited = true
+            abortReason = AbortReason.PIXEL_LIMITED
             return Step.Finished(finish())
         }
 
@@ -79,14 +81,18 @@ class TestEngine(
         return Step.Present(trial)
     }
 
-    fun respond(dir: Dir) {
+    /**
+     * Records the answer to the presented trial. Returns false if it was voided
+     * because distance was lost (the slot is presented again), true otherwise.
+     */
+    fun respond(dir: Dir): Boolean {
         check(result == null) { "test is finished" }
         val trial = checkNotNull(pending) { "no trial is being presented" }
         pending = null
 
         if (usableDistanceMm() == null) {
             voided++ // answered at an unknown distance: not scored, slot is re-presented
-            return
+            return false
         }
 
         val correct = trial.orientation.isCorrect(dir)
@@ -108,6 +114,18 @@ class TestEngine(
             }
             Phase.DONE -> error("unreachable")
         }
+        return true
+    }
+
+    /**
+     * Ends the test as INCONCLUSIVE when the presented letter cannot be drawn
+     * (it does not fit the screen, or the renderer finds it pixel-limited).
+     */
+    fun abort(reason: AbortReason): EngineResult {
+        check(result == null) { "test is finished" }
+        if (reason == AbortReason.PIXEL_LIMITED) pixelLimited = true
+        abortReason = reason
+        return finish()
     }
 
     private fun completeLine() {
@@ -131,7 +149,7 @@ class TestEngine(
         pending = null
         val passedCutoff = lastPassed?.let { it <= config.referralCutoffLogMAR + LOGMAR_EPS } == true
         val decision = when {
-            pixelLimited -> Referral.INCONCLUSIVE
+            pixelLimited || abortReason != null -> Referral.INCONCLUSIVE
             passedCutoff -> Referral.PASS
             else -> Referral.REFER
         }
@@ -145,7 +163,7 @@ class TestEngine(
             distancePauses = distancePauses,
             voidedTrials = voided,
         )
-        return EngineResult(config.kind, lastPassed, decision, quality, lines.toList()).also { result = it }
+        return EngineResult(config.kind, lastPassed, decision, quality, lines.toList(), abortReason).also { result = it }
     }
 
     private fun currentLogMAR(): Double =

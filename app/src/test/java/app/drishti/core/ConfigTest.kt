@@ -54,6 +54,7 @@ class ConfigTest {
         assertEquals(true, c.pinhole.onFail)
         assertEquals(3.0, c.minStrokePx, 0.0)
         assertEquals(50.0, c.minLux, 0.0)
+        assertEquals(1.0, c.testBrightness, 0.0)
         assertEquals(EngineKind.DESCENDING_LINES, c.engine)
     }
 
@@ -125,8 +126,9 @@ class ConfigTest {
             .with("far_distance_mm", JsonPrimitive(-1))
             .with("min_stroke_px", JsonPrimitive(0))
             .with("schema_version", JsonPrimitive(2))
-        val e = expectErrors(bad, "far_distance_mm", "min_stroke_px", "schema_version")
-        assertTrue(e.errors.size >= 3)
+            .with("test_brightness", JsonPrimitive(1.5))
+        val e = expectErrors(bad, "far_distance_mm", "min_stroke_px", "schema_version", "test_brightness")
+        assertTrue(e.errors.size >= 4)
     }
 
     @Test
