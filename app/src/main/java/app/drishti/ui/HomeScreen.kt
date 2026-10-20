@@ -1,24 +1,52 @@
 package app.drishti.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import app.drishti.core.FlowScreen
 import app.drishti.core.Readiness
 
 @Composable
 fun AppRoot(state: UiState, vm: MainViewModel, xdpi: Double) {
+    Box(Modifier.fillMaxSize()) {
+        Screens(state, vm, xdpi)
+        // D44: unmapped and unused presses are always shown. Letter screens show it in the pad strip instead.
+        val ready = state as? UiState.Ready
+        val notice = ready?.inputNotice
+        if (notice != null && !(ready.screen == Screen.FLOW && ready.flow is FlowScreen.Letter)) {
+            Text(
+                notice,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .safeDrawingPadding()
+                    .padding(16.dp)
+                    .background(Color(0xE0303030), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun Screens(state: UiState, vm: MainViewModel, xdpi: Double) {
     when (state) {
         UiState.Loading -> Surface(Modifier.fillMaxSize()) { Text("Loading…", Modifier.safeDrawingPadding().padding(24.dp)) }
         is UiState.ConfigError -> ConfigErrorScreen(state.errors)

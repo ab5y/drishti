@@ -31,8 +31,8 @@ data class ScreeningResult(
     val near: NearOutcome,
     val overall: Referral,
     val overallText: String,
-    val lux: Double?,
-    /** Null when there is no light reading. */
+    val light: LightReadings,
+    /** From the lower reading (D38); null when there is no light reading at all. */
     val lightOk: Boolean?,
     /** Rope distance: confirmed by the operator on each prompt (D31). */
     val distanceOk: Boolean,
@@ -44,10 +44,11 @@ object ResultBuilder {
         config: AppConfig,
         patient: Patient,
         results: Map<TestId, EngineResult>,
-        lux: Double?,
-        lightOk: Boolean?,
+        light: LightReadings,
         trials: List<TrialRecord>,
     ): ScreeningResult {
+        val lightOk = light.ok(config.minLux)
+        val perLine = config.optotypesPerLine
         fun eye(eye: Eye): EyeOutcome {
             val farId = TestId(TestKind.FAR, eye)
             val far = results.getValue(farId)
@@ -63,11 +64,11 @@ object ResultBuilder {
                 eye = eye,
                 far = far,
                 decision = far.decision,
-                reason = ResultText.reason(far, config.far),
+                reason = ResultText.reason(far, config.far, perLine),
                 pinhole = pin,
                 pinholeImproved = improved,
                 pinholeText = pin?.let { ResultText.pinhole(far, it, improved, config) },
-                quality = ResultText.quality(far, config, config.farDistanceMm, lux, lightOk, trials.filter { it.test == farId }),
+                quality = ResultText.quality(far, config, config.farDistanceMm, light, lightOk, trials.filter { it.test == farId }),
             )
         }
 
@@ -78,8 +79,8 @@ object ResultBuilder {
         val near = NearOutcome(
             result = nearResult,
             decision = nearResult.decision,
-            reason = ResultText.reason(nearResult, config.near),
-            quality = ResultText.quality(nearResult, config, config.nearDistanceMm, lux, lightOk, trials.filter { it.test == nearId }),
+            reason = ResultText.reason(nearResult, config.near, perLine),
+            quality = ResultText.quality(nearResult, config, config.nearDistanceMm, light, lightOk, trials.filter { it.test == nearId }),
         )
 
         val parts = listOf("right eye" to right.decision, "left eye" to left.decision, "near" to near.decision)
@@ -90,7 +91,7 @@ object ResultBuilder {
                 parts.filter { it.second == Referral.REFER }.joinToString(", ") { it.first } + ")."
             Referral.INCONCLUSIVE -> ResultText.OVERALL_INCONCLUSIVE
         }
-        return ScreeningResult(patient, right, left, near, overall, overallText, lux, lightOk, distanceOk = true, trials)
+        return ScreeningResult(patient, right, left, near, overall, overallText, light, lightOk, distanceOk = true, trials)
     }
 
     /** D28: any REFER -> REFER; else any INCONCLUSIVE -> INCONCLUSIVE; else PASS. */
@@ -114,6 +115,7 @@ object ResultText {
     const val OVERALL_INCONCLUSIVE =
         "Screening incomplete. Follow the next step shown for each part marked INCONCLUSIVE."
     const val OVERALL_PASS = "PASS. No referral from this screening."
+    const val NO_ANSWERS = "No answers were entered for this test."
 
     fun decisionLabel(r: Referral) = when (r) {
         Referral.PASS -> "PASS"
@@ -123,29 +125,49 @@ object ResultText {
 
     fun line(logMAR: Double) = "${Snellen.sixMetre(logMAR)} (logMAR ${fmt("%.1f", logMAR)})"
 
-    fun reason(r: EngineResult, spec: TestSpec): String = when (r.decision) {
-        Referral.PASS -> "Passed the screening line ${line(spec.referralCutoffLogMAR)}."
-        Referral.REFER -> "Did not pass the screening line ${line(spec.referralCutoffLogMAR)}. " +
-            (r.lastPassedLogMAR?.let { "Smallest line passed: ${line(it)}." }
-                ?: "No line passed; the largest shown was ${line(spec.linesLogMAR.first())}.")
-        Referral.INCONCLUSIVE -> when (r.abortReason) {
-            AbortReason.LETTER_DOES_NOT_FIT -> INCONCLUSIVE_DOES_NOT_FIT
-            AbortReason.PIXEL_LIMITED, null -> INCONCLUSIVE_PIXEL_LIMITED
+    /** D45: every scored answer was "unsure", or fewer than one line was scored. */
+    fun noAnswers(r: EngineResult, optotypesPerLine: Int): Boolean {
+        val q = r.quality
+        return q.scoredResponses < optotypesPerLine || q.unsureResponses == q.scoredResponses
+    }
+
+    fun reason(r: EngineResult, spec: TestSpec, optotypesPerLine: Int): String {
+        val text = when (r.decision) {
+            // D37: a PASS stopped at the screening line, so better acuity was never measured.
+            Referral.PASS -> "Passed the screening line. Reads at least ${Snellen.sixMetre(spec.referralCutoffLogMAR)} " +
+                "(logMAR ${fmt("%.1f", spec.referralCutoffLogMAR)} or better); smaller lines were not tested."
+            Referral.REFER -> "Did not pass the screening line ${line(spec.referralCutoffLogMAR)}. " +
+                when (val a = Acuity.of(r)) {
+                    is Acuity.Exact -> "Smallest line passed: ${line(a.logMAR)}."
+                    else -> "No line passed; the largest shown was ${line(spec.linesLogMAR.first())}."
+                }
+            Referral.INCONCLUSIVE -> when (r.abortReason) {
+                AbortReason.LETTER_DOES_NOT_FIT -> INCONCLUSIVE_DOES_NOT_FIT
+                AbortReason.PIXEL_LIMITED, null -> INCONCLUSIVE_PIXEL_LIMITED
+            }
         }
+        return if (noAnswers(r, optotypesPerLine)) "$NO_ANSWERS $text" else text
     }
 
     fun pinhole(far: EngineResult, pin: EngineResult, improved: Boolean?, config: AppConfig): String {
         if (improved == null) return "Pinhole: not screened."
-        val without = far.lastPassedLogMAR
-        val with = pin.lastPassedLogMAR
-        if (without == null && with == null) return "Pinhole: not improved (no line passed with or without the pinhole)."
-        fun name(v: Double?) = v?.let { Snellen.sixMetre(it) } ?: "no line passed"
-        return if (improved) {
-            val unaided = without ?: (config.far.linesLogMAR.first() + config.lineStepLogMAR)
-            val lines = ((unaided - with!!) / config.lineStepLogMAR).roundToInt()
-            "Pinhole: improved from ${name(without)} to ${name(with)} ($lines ${if (lines == 1) "line" else "lines"})."
+        val without = Acuity.of(far)
+        val with = Acuity.of(pin)
+        val body = when {
+            without == Acuity.NoLinePassed && with == Acuity.NoLinePassed ->
+                "not improved (no line passed with or without the pinhole)."
+            improved -> {
+                val unaided = far.lastPassedLogMAR ?: (config.far.linesLogMAR.first() + config.lineStepLogMAR)
+                val lines = ((unaided - pin.lastPassedLogMAR!!) / config.lineStepLogMAR).roundToInt()
+                val count = "$lines ${if (lines == 1) "line" else "lines"}"
+                "improved from ${without.snellen()} to ${with.snellen()} (${if (with is Acuity.AtLeast) "at least " else ""}$count)."
+            }
+            else -> "not improved (${without.snellen()} without, ${with.snellen()} with the pinhole)."
+        }
+        return if (noAnswers(pin, config.optotypesPerLine)) {
+            "Pinhole: $NO_ANSWERS ${body.replaceFirstChar { it.uppercase() }}"
         } else {
-            "Pinhole: not improved (${name(without)} without, ${name(with)} with the pinhole)."
+            "Pinhole: $body"
         }
     }
 
@@ -153,7 +175,7 @@ object ResultText {
         r: EngineResult,
         config: AppConfig,
         distanceMm: Double,
-        lux: Double?,
+        light: LightReadings,
         lightOk: Boolean?,
         trials: List<TrialRecord>,
     ): List<String> = buildList {
@@ -176,19 +198,62 @@ object ResultText {
             "Distance: confirmed by the operator at the ${distanceMm.toInt()} mm mark" +
                 (if (q.distancePauses > 0) "; paused ${q.distancePauses} times to adjust distance." else "."),
         )
-        add(
-            when (lightOk) {
-                null -> "Light: unknown (no light reading)."
-                true -> "Light: ${fmt("%.0f", lux)} lux (minimum ${fmt("%.0f", config.minLux)})."
-                false -> "Light: ${fmt("%.0f", lux)} lux, below the minimum of ${fmt("%.0f", config.minLux)}."
-            },
-        )
+        add(lightLine(light, lightOk, config.minLux))
+        val pad = trials.count { it.source == AnswerSource.PAD }
+        if (pad > 0) add("Answers: $pad of ${trials.size} entered on the on-screen pad.")
         if (config.crowding.enabled) {
             val uncrowded = trials.count { !it.crowded }
             if (uncrowded > 0) add("$uncrowded of ${trials.size} letters were shown without crowding bars (the bars did not fit the screen).")
         }
         trials.maxOfOrNull { abs(it.sizeErrorFraction) }?.let {
             add("Letter size after pixel rounding: within ${fmt("%.1f", it * 100)}% of intended.")
+        }
+    }
+
+    /** D38: both readings are shown; the lower one decides. */
+    fun lightLine(light: LightReadings, lightOk: Boolean?, minLux: Double): String {
+        fun one(v: Double?, at: String) = if (v == null) "no reading $at" else "${fmt("%.0f", v)} lux $at"
+        val readings = one(light.atRegister, "at registration") + ", " + one(light.atTestStart, "when the first eye started")
+        val min = fmt("%.0f", minLux)
+        return when (lightOk) {
+            null -> "Light: unknown (no light reading)."
+            true -> "Light: OK. $readings (minimum $min)."
+            false -> "Light: NOT OK. $readings; the lower is below the minimum of $min."
+        }
+    }
+}
+
+/** Light sensor readings for one screening (D38). */
+data class LightReadings(val atRegister: Double?, val atTestStart: Double?) {
+    val lowest: Double? get() = listOfNotNull(atRegister, atTestStart).minOrNull()
+
+    /** Null only when there is no reading at all. */
+    fun ok(minLux: Double): Boolean? = lowest?.let { it >= minLux }
+}
+
+/**
+ * What one test shows about acuity (D37). The engine stops at the screening
+ * line, so a passed final line is only a lower bound; a value is exact only
+ * when the next line was failed.
+ */
+sealed interface Acuity {
+    data class AtLeast(val logMAR: Double) : Acuity
+    data class Exact(val logMAR: Double) : Acuity
+    data object NoLinePassed : Acuity
+    data object NotMeasured : Acuity
+
+    fun snellen(): String = when (this) {
+        is AtLeast -> "at least ${Snellen.sixMetre(logMAR)}"
+        is Exact -> Snellen.sixMetre(logMAR)
+        NoLinePassed -> "no line passed"
+        NotMeasured -> "not measured"
+    }
+
+    companion object {
+        fun of(r: EngineResult): Acuity {
+            if (r.decision == Referral.INCONCLUSIVE) return NotMeasured
+            val passed = r.lastPassedLogMAR ?: return NoLinePassed
+            return if (r.lines.lastOrNull()?.passed == true) AtLeast(passed) else Exact(passed)
         }
     }
 }

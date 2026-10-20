@@ -3,17 +3,23 @@ package app.drishti.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -31,14 +37,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.drishti.core.Eye
 import app.drishti.core.EyeOutcome
 import app.drishti.core.FlowScreen
 import app.drishti.core.Phase
 import app.drishti.core.Referral
+import app.drishti.core.RemoteAction
+import app.drishti.core.RemoteCheck
 import app.drishti.core.ResultText
 import app.drishti.core.ScreeningResult
 import app.drishti.core.TestId
@@ -47,10 +58,16 @@ import kotlinx.coroutines.delay
 
 private const val DISTANCE_POLL_MS = 500L
 
+/** Width of the operator answer pad strip at the right edge of letter screens (D43). */
+private val PAD_STRIP = 168.dp
+private val PAD_KEY = 48.dp
+private val PAD_INK = Color(0xFFAAAAAA)
+private val PAD_EDGE = Color(0xFFE3E3E3)
+
 /**
- * Hosts every flow screen in landscape. Reports the available area to the
- * flow so letters are planned against the real viewport. Only wiring: all
- * decisions are in core/ScreeningFlow.
+ * Hosts every flow screen in landscape. Reports the letter area (the screen
+ * minus the answer pad strip) to the flow so letters are planned against the
+ * area they are drawn in. Only wiring: all decisions are in core/ScreeningFlow.
  */
 @Composable
 fun FlowHost(state: UiState.Ready, vm: MainViewModel) {
@@ -61,14 +78,16 @@ fun FlowHost(state: UiState.Ready, vm: MainViewModel) {
 
     Box(Modifier.fillMaxSize().background(Color.White)) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
-            val w = constraints.maxWidth
             val h = constraints.maxHeight
-            LaunchedEffect(w, h) { vm.setTestViewport(w, h) }
+            // The pad strip is never part of the letter area, so a letter or its bars cannot sit under it.
+            val letterW = (constraints.maxWidth - with(LocalDensity.current) { PAD_STRIP.roundToPx() }).coerceAtLeast(1)
+            LaunchedEffect(letterW, h) { vm.setTestViewport(letterW, h) }
             when (screen) {
                 FlowScreen.Register -> RegisterScreen(state, vm)
                 is FlowScreen.LightWarning -> LightWarningScreen(screen, vm)
+                is FlowScreen.RemoteCheck -> RemoteCheckScreen(screen, vm)
                 is FlowScreen.Prompt -> PromptScreen(screen, vm)
-                is FlowScreen.Letter -> LetterScreen(screen)
+                is FlowScreen.Letter -> LetterScreen(screen, letterW, state.inputNotice, vm)
                 is FlowScreen.AdjustDistance -> AdjustDistanceScreen(screen, vm)
                 is FlowScreen.Result -> ResultScreen(screen.result, vm)
             }
@@ -127,11 +146,60 @@ private fun LightWarningScreen(s: FlowScreen.LightWarning, vm: MainViewModel) {
             else "You can continue; the result will show the lighting as not OK.",
             color = Color.Black,
         )
+        Text("Press any button on the remote, or tap Continue.", color = Color.Black)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { vm.exitFlow() }) { Text("Cancel") }
-            Button(onClick = { vm.flowOk() }) { Text("Continue (OK)") }
+            Button(onClick = { vm.flowOk() }) { Text("Continue") }
         }
     }
+}
+
+/** D42: every button the test needs must be seen from the remote before it answers anything. */
+@Composable
+private fun RemoteCheckScreen(s: FlowScreen.RemoteCheck, vm: MainViewModel) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Remote check", style = MaterialTheme.typography.headlineSmall, color = Color.Black)
+        Text("Press each button on the remote in turn: Up, Down, Left, Right, then OK. Each one is ticked when it arrives.", color = Color.Black)
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            RemoteCheck.ORDER.forEachIndexed { i, a ->
+                val (mark, color) = when {
+                    i < s.ticked -> "✓" to Color(0xFF1B6B3A)
+                    i == s.ticked -> "→" to Color.Black
+                    else -> "·" to Color.Gray
+                }
+                Text(
+                    "$mark ${label(a)}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = color,
+                    fontWeight = if (i == s.ticked) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
+        s.expected?.let { Text("Now press ${label(it)}.", style = MaterialTheme.typography.titleMedium, color = Color.Black) }
+        s.lastWrong?.let { w ->
+            Text("Got ${label(w)}, waiting for ${s.expected?.let(::label)}.", color = MaterialTheme.colorScheme.error)
+        }
+        Text(
+            "If the remote has no button for any of these, it cannot be used to answer. Use on-screen answers instead: " +
+                "the patient says or points to the answer and you tap it on the pad.",
+            color = Color.Black,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = { vm.exitFlow() }) { Text("Cancel") }
+            OutlinedButton(onClick = { vm.useOnScreenAnswers() }) { Text("Use on-screen answers") }
+        }
+    }
+}
+
+private fun label(a: RemoteAction) = when (a) {
+    RemoteAction.UP -> "Up"
+    RemoteAction.DOWN -> "Down"
+    RemoteAction.LEFT -> "Left"
+    RemoteAction.RIGHT -> "Right"
+    RemoteAction.OK -> "OK"
 }
 
 @Composable
@@ -139,25 +207,66 @@ private fun PromptScreen(s: FlowScreen.Prompt, vm: MainViewModel) {
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(s.text.title, style = MaterialTheme.typography.headlineMedium, color = Color.Black, fontWeight = FontWeight.Bold)
         s.text.lines.forEach { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.Black) }
-        Button(onClick = { vm.flowOk() }) { Text("Ready (OK)") }
+        Button(onClick = { vm.flowOk() }) { Text("Ready") }
     }
 }
 
-/** Plain white background, black letter at its exact pixel geometry, centred on whole pixels. */
+/**
+ * Plain white background, black letter at its exact pixel geometry, centred on
+ * whole pixels in the letter area; the muted answer pad sits in its own strip.
+ */
 @Composable
-private fun LetterScreen(s: FlowScreen.Letter) {
-    Box(Modifier.fillMaxSize()) {
-        Canvas(Modifier.fillMaxSize()) {
-            val ox = (size.width.toInt() - s.render.footprintPx) / 2
-            val oy = (size.height.toInt() - s.render.footprintPx) / 2
-            fillPxRects(s.render.rects, ox, oy, android.graphics.Color.BLACK)
+private fun LetterScreen(s: FlowScreen.Letter, letterWidthPx: Int, notice: String?, vm: MainViewModel) {
+    val letterWidth = with(LocalDensity.current) { letterWidthPx.toDp() }
+    Row(Modifier.fillMaxSize()) {
+        Box(Modifier.width(letterWidth).fillMaxHeight()) {
+            Canvas(Modifier.fillMaxSize()) {
+                val ox = (size.width.toInt() - s.render.footprintPx) / 2
+                val oy = (size.height.toInt() - s.render.footprintPx) / 2
+                fillPxRects(s.render.rects, ox, oy, android.graphics.Color.BLACK)
+            }
+            Text(
+                statusLine(s),
+                color = Color(0xFFB0B0B0),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+            )
         }
-        Text(
-            statusLine(s),
-            color = Color(0xFFB0B0B0),
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
-        )
+        AnswerPad(notice, onPress = vm::padPress, modifier = Modifier.fillMaxSize())
+    }
+}
+
+/** D43: the operator can enter the patient's answer. Muted so it does not draw the patient's eye. */
+@Composable
+private fun AnswerPad(notice: String?, onPress: (RemoteAction) -> Unit, modifier: Modifier) {
+    Column(
+        modifier.padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        PadKey("Up") { onPress(RemoteAction.UP) }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            PadKey("Left") { onPress(RemoteAction.LEFT) }
+            Spacer(Modifier.size(PAD_KEY))
+            PadKey("Right") { onPress(RemoteAction.RIGHT) }
+        }
+        PadKey("Down") { onPress(RemoteAction.DOWN) }
+        PadKey("Not sure", width = PAD_KEY * 3 + 8.dp) { onPress(RemoteAction.OK) }
+        // Notices go here on letter screens so they never cover the letter (D44).
+        notice?.let { Text(it, color = Color(0xFF8A8A8A), fontSize = 11.sp, lineHeight = 13.sp) }
+    }
+}
+
+@Composable
+private fun PadKey(text: String, width: Dp = PAD_KEY, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(width = width, height = PAD_KEY)
+            .border(1.dp, PAD_EDGE, RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = PAD_INK, fontSize = 11.sp)
     }
 }
 

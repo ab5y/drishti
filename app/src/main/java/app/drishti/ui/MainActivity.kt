@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.DisplayMetrics
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.drishti.core.DisplaySize
 import app.drishti.core.usesTestDisplay
+import app.drishti.input.GamepadMotion
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -101,12 +103,21 @@ class MainActivity : ComponentActivity() {
     // Fallback for keys that do not pass through the focused view chain.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean = handleKey(event) || super.dispatchKeyEvent(event)
 
+    // Gamepad hat and sticks (D40). The activity sees generic motion before any view, so no
+    // pre-IME hook is needed; consuming it stops Android making D-pad keys from it as well.
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (!GamepadMotion.isJoystickMove(event)) return super.dispatchGenericMotionEvent(event)
+        return viewModel.onMotion(event.deviceId, event.device?.name ?: "unknown", GamepadMotion.frames(event))
+    }
+
     private fun handleKey(event: KeyEvent): Boolean =
         viewModel.onKey(
             keyCode = event.keyCode,
             keyName = KeyEvent.keyCodeToString(event.keyCode),
             scanCode = event.scanCode,
             deviceName = event.device?.name ?: "unknown",
+            // Navigation-bar Back and the on-screen keyboard (D41).
+            fromPhoneUi = event.flags and (KeyEvent.FLAG_VIRTUAL_HARD_KEY or KeyEvent.FLAG_SOFT_KEYBOARD) != 0,
             isDown = event.action == KeyEvent.ACTION_DOWN,
             repeatCount = event.repeatCount,
             eventTimeMs = event.eventTime,

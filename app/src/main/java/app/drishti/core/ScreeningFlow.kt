@@ -11,6 +11,20 @@ data class Patient(val token: String, val age: Int?)
 
 data class PromptText(val title: String, val lines: List<String>)
 
+/** Where an answer came from (D43). */
+enum class AnswerSource { REMOTE, PAD }
+
+/** What happened to a press. A press that is not used always says why (D44). */
+sealed interface InputResult {
+    data object Used : InputResult
+    data class NotUsed(val why: String) : InputResult
+}
+
+/** The remote check before the first eye (D42). */
+object RemoteCheck {
+    val ORDER = listOf(RemoteAction.UP, RemoteAction.DOWN, RemoteAction.LEFT, RemoteAction.RIGHT, RemoteAction.OK)
+}
+
 /** One answered presentation, with what was actually drawn. */
 data class TrialRecord(
     val test: TestId,
@@ -28,12 +42,17 @@ data class TrialRecord(
     /** drawn / intended - 1 (positive = drawn larger). */
     val sizeErrorFraction: Double,
     val crowded: Boolean,
+    val source: AnswerSource,
 )
 
 sealed interface FlowScreen {
     data object Register : FlowScreen
     /** Light below min_lux, or unknown. The operator may continue. */
     data class LightWarning(val lux: Double?, val minLux: Double) : FlowScreen
+    /** Operator presses [RemoteCheck.ORDER] in turn; [ticked] of them are done. */
+    data class RemoteCheck(val ticked: Int, val lastWrong: RemoteAction?) : FlowScreen {
+        val expected: RemoteAction? get() = app.drishti.core.RemoteCheck.ORDER.getOrNull(ticked)
+    }
     /** Occlusion / positioning prompt; OK continues. */
     data class Prompt(val test: TestId, val text: PromptText) : FlowScreen
     data class Letter(val test: TestId, val trial: Trial, val render: OptotypeRender.Drawable, val crowded: Boolean) : FlowScreen
@@ -46,17 +65,33 @@ val FlowScreen.usesTestDisplay: Boolean
     get() = this is FlowScreen.Prompt || this is FlowScreen.Letter || this is FlowScreen.AdjustDistance
 
 /**
- * The screening sequence: register -> far eye 1 -> far eye 2 -> near (both
- * eyes) -> pinhole for each far eye that is REFER -> result. Pure Kotlin; the
- * UI only shows [screen] and forwards keys, the viewport and polls.
+ * The screening sequence: register -> (light warning) -> remote check -> far
+ * eye 1 -> far eye 2 -> near (both eyes) -> pinhole for each far eye that is
+ * REFER -> result. Pure Kotlin; the UI only shows [screen] and forwards
+ * presses, the viewport and polls.
+ *
+ * [clock] is uptime in ms, for the prompt dwell (D41). [readLux] reads the
+ * light sensor when the first eye's test starts (D38).
  */
 class ScreeningFlow(
     private val config: AppConfig,
     private val pxPerMm: Double,
     private val distance: DistanceSource,
     private val random: Random,
+    private val clock: () -> Long,
+    private val readLux: () -> Double?,
+    private val promptMinShowMs: Long,
 ) {
+    private var shownAtMs = clock()
+
     var screen: FlowScreen = FlowScreen.Register
+        private set(value) {
+            field = value
+            shownAtMs = clock()
+        }
+
+    /** False once the operator chose on-screen answers on the remote check. */
+    var remoteAnswers: Boolean = true
         private set
 
     private val _trials = mutableListOf<TrialRecord>()
@@ -64,7 +99,9 @@ class ScreeningFlow(
 
     private var viewport: Viewport? = null
     private var patient: Patient? = null
-    private var lux: Double? = null
+    private var luxAtRegister: Double? = null
+    private var luxAtTestStart: Double? = null
+    private var testStarted = false
     private var eyeOrder: List<Eye> = emptyList()
 
     private val queue = ArrayDeque<TestId>()
@@ -85,7 +122,7 @@ class ScreeningFlow(
         if (p == null) return errors
 
         patient = p
-        this.lux = lux
+        luxAtRegister = lux
         eyeOrder = when (config.eyeOrder) {
             EyeOrder.RIGHT_FIRST -> listOf(Eye.RIGHT, Eye.LEFT)
             EyeOrder.LEFT_FIRST -> listOf(Eye.LEFT, Eye.RIGHT)
@@ -94,24 +131,45 @@ class ScreeningFlow(
         eyeOrder.forEach { queue.addLast(TestId(TestKind.FAR, it)) }
         queue.addLast(TestId(TestKind.NEAR, Eye.BOTH))
 
-        if (lightOk() != true) screen = FlowScreen.LightWarning(lux, config.minLux) else nextTest()
+        val lightOk = LightReadings(lux, null).ok(config.minLux)
+        screen = if (lightOk != true) FlowScreen.LightWarning(lux, config.minLux) else checkScreen()
         return emptyList()
     }
 
-    fun onAction(action: RemoteAction) {
-        when (val s = screen) {
-            is FlowScreen.LightWarning -> if (action == RemoteAction.OK) nextTest()
-            is FlowScreen.Prompt -> if (action == RemoteAction.OK) advance()
-            is FlowScreen.Letter -> {
-                val e = checkNotNull(engine)
-                val dir = action.toDir()
-                val counted = e.respond(dir)
-                _trials += record(s, dir, counted)
-                advance()
-            }
-            // Register and Result use on-screen controls; keys are ignored while paused for distance.
-            FlowScreen.Register, is FlowScreen.AdjustDistance, is FlowScreen.Result -> Unit
+    /** A mapped press: from the remote (keys or axes) or the on-screen controls. */
+    fun onAction(action: RemoteAction, source: AnswerSource = AnswerSource.REMOTE): InputResult = when (val s = screen) {
+        is FlowScreen.LightWarning -> continueFrom(source) { screen = checkScreen() }
+        is FlowScreen.RemoteCheck ->
+            if (source == AnswerSource.REMOTE) check(s, action) else InputResult.NotUsed(CHECK_REMOTE_ONLY)
+        is FlowScreen.Prompt -> continueFrom(source) { startTest() }
+        is FlowScreen.Letter -> if (source == AnswerSource.REMOTE && !remoteAnswers) {
+            InputResult.NotUsed(REMOTE_OFF)
+        } else {
+            val dir = action.toDir()
+            val counted = checkNotNull(engine).respond(dir)
+            _trials += record(s, dir, counted, source)
+            advance()
+            InputResult.Used
         }
+        is FlowScreen.AdjustDistance -> InputResult.NotUsed(PAUSED)
+        FlowScreen.Register, is FlowScreen.Result -> InputResult.NotUsed(USE_SCREEN)
+    }
+
+    /** A remote press with no mapping (unmapped key, other axis, diagonal): it only continues prompts (D41). */
+    fun onOtherPress(): InputResult = when (screen) {
+        is FlowScreen.LightWarning -> continueFrom(AnswerSource.REMOTE) { screen = checkScreen() }
+        is FlowScreen.Prompt -> continueFrom(AnswerSource.REMOTE) { startTest() }
+        is FlowScreen.RemoteCheck -> InputResult.NotUsed(CHECK_UNMAPPED)
+        is FlowScreen.Letter -> InputResult.NotUsed(NOT_AN_ANSWER)
+        is FlowScreen.AdjustDistance -> InputResult.NotUsed(PAUSED)
+        FlowScreen.Register, is FlowScreen.Result -> InputResult.NotUsed(USE_SCREEN)
+    }
+
+    /** From the remote check: the remote cannot give all five presses, so answers come from the pad (D42). */
+    fun useOnScreenAnswers() {
+        if (screen !is FlowScreen.RemoteCheck) return
+        remoteAnswers = false
+        nextTest()
     }
 
     /** Called periodically while paused for distance. */
@@ -119,7 +177,33 @@ class ScreeningFlow(
         if (screen is FlowScreen.AdjustDistance) advance()
     }
 
-    private fun lightOk(): Boolean? = lux?.let { it >= config.minLux }
+    private fun checkScreen() = FlowScreen.RemoteCheck(ticked = 0, lastWrong = null)
+
+    private fun check(s: FlowScreen.RemoteCheck, action: RemoteAction): InputResult {
+        val expected = checkNotNull(s.expected)
+        if (action != expected) {
+            screen = s.copy(lastWrong = action)
+            return InputResult.NotUsed("Got $action, waiting for $expected.")
+        }
+        val ticked = s.ticked + 1
+        if (ticked == RemoteCheck.ORDER.size) nextTest() else screen = FlowScreen.RemoteCheck(ticked, lastWrong = null)
+        return InputResult.Used
+    }
+
+    /** Remote presses on a prompt count only after it has been up for [promptMinShowMs]. */
+    private inline fun continueFrom(source: AnswerSource, go: () -> Unit): InputResult {
+        if (source == AnswerSource.REMOTE && clock() - shownAtMs < promptMinShowMs) return InputResult.NotUsed(WAIT_PROMPT)
+        go()
+        return InputResult.Used
+    }
+
+    private fun startTest() {
+        if (!testStarted) {
+            testStarted = true
+            luxAtTestStart = readLux()
+        }
+        advance()
+    }
 
     private fun nextTest() {
         if (queue.isEmpty() && !pinholePlanned) {
@@ -162,7 +246,7 @@ class ScreeningFlow(
         nextTest()
     }
 
-    private fun record(s: FlowScreen.Letter, dir: Dir, counted: Boolean): TrialRecord {
+    private fun record(s: FlowScreen.Letter, dir: Dir, counted: Boolean, source: AnswerSource): TrialRecord {
         val intended = OptotypeMath.optotypeHeightMm(s.trial.distanceMm, s.trial.logMAR)
         return TrialRecord(
             test = s.test,
@@ -178,13 +262,24 @@ class ScreeningFlow(
             strokePx = s.render.strokePx,
             sizeErrorFraction = s.render.actualHeightMm / intended - 1,
             crowded = s.crowded,
+            source = source,
         )
     }
 
     private fun finish() {
         screen = FlowScreen.Result(
-            ResultBuilder.build(config, checkNotNull(patient), results, lux, lightOk(), trials.toList()),
+            ResultBuilder.build(config, checkNotNull(patient), results, LightReadings(luxAtRegister, luxAtTestStart), trials.toList()),
         )
+    }
+
+    companion object {
+        const val WAIT_PROMPT = "Wait: prompt just appeared. Press again."
+        const val REMOTE_OFF = "Remote answers are off: use the on-screen pad."
+        const val PAUSED = "Paused for distance: press not used."
+        const val USE_SCREEN = "Use the on-screen buttons on this screen."
+        const val CHECK_REMOTE_ONLY = "Press the buttons on the remote for this check."
+        const val CHECK_UNMAPPED = "Not one of Up, Down, Left, Right, OK."
+        const val NOT_AN_ANSWER = "Not an answer: use Up, Down, Left, Right or OK."
     }
 }
 
@@ -209,7 +304,7 @@ object Prompts {
     fun forTest(test: TestId, config: AppConfig): PromptText {
         val far = config.farDistanceMm.toInt()
         val nearMm = config.nearDistanceMm.toInt()
-        val ok = "Press OK on the remote when ready."
+        val ok = "Press any button on the remote, or tap Ready."
         return when (test.kind) {
             TestKind.FAR -> {
                 val (eye, other) = names(test.eye)
