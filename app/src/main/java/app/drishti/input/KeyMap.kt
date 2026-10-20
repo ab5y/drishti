@@ -1,12 +1,15 @@
 package app.drishti.input
 
 import android.view.KeyEvent
+import android.view.MotionEvent
+import app.drishti.core.AxisInputs
+import app.drishti.core.InputId
 import app.drishti.core.RemoteAction
 
 /**
- * BLE HID remote key table (build sheet section 06). This file is the only
- * place to edit when mapping a real remote: use the key capture screen to read
- * its keycodes and axes, then change the table below. No logic lives here.
+ * Built-in remote key table (build sheet section 06). These are the defaults:
+ * an operator can map a real remote on the Remote setup screen (D47), and that
+ * stored mapping wins over this table. No logic lives here.
  */
 object KeyMap {
     val TABLE: Map<Int, RemoteAction> = mapOf(
@@ -22,6 +25,12 @@ object KeyMap {
         KeyEvent.KEYCODE_BUTTON_A to RemoteAction.OK,
     )
 
+    /** Keys, hat and left stick with their built-in meaning, for core/RemoteMapping (D47). */
+    val DEFAULTS: Map<InputId, RemoteAction> =
+        TABLE.mapKeys { (code, _) -> InputId.Key(code) } +
+            AxisInputs.defaults(MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y) +
+            AxisInputs.defaults(MotionEvent.AXIS_X, MotionEvent.AXIS_Y)
+
     /** A second press within this many ms of the last accepted one is ignored. */
     const val DEBOUNCE_MS = 250L
 
@@ -36,4 +45,10 @@ object KeyMap {
 
     /** How long an "Unmapped" or "not used" notice stays on screen (D44). */
     const val NOTICE_MS = 3_000L
+
+    /** Remote battery below this fraction is warned about (D51). */
+    const val LOW_BATTERY = 0.2
+
+    /** Battery is re-read this often during the flow, as well as on device changes (D51). */
+    const val BATTERY_REFRESH_MS = 60_000L
 }

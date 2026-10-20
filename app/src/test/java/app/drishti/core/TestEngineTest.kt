@@ -433,4 +433,32 @@ class TestEngineTest {
     fun `engine config rejects a cutoff not in the line set`() {
         config(cutoff = 0.35)
     }
+
+    @Test
+    fun `a withdrawn letter is not scored and its slot is shown again`() {
+        val e = engine(cfg = config(practiceTrials = 0))
+        val first = (e.next() as Step.Present).trial
+        e.withdraw()
+        val again = (e.next() as Step.Present).trial
+        assertEquals(first.lineIndex, again.lineIndex)
+        assertEquals(first.indexInLine, again.indexInLine)
+        assertEquals(first.logMAR, again.logMAR, 0.0)
+        e.respond(again.orientation.toDir())
+        val r = run(e) { it.orientation.toDir() }.result
+        assertEquals(1, r.quality.voidedTrials)
+        // One line per logMAR step down to the cutoff, five letters each: the withdrawn letter adds none.
+        assertEquals(r.lines.sumOf { it.shown }, r.quality.scoredResponses)
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `withdraw needs a letter on screen`() {
+        engine().withdraw()
+    }
+
+    private fun Orientation.toDir() = when (this) {
+        Orientation.UP -> Dir.UP
+        Orientation.DOWN -> Dir.DOWN
+        Orientation.LEFT -> Dir.LEFT
+        Orientation.RIGHT -> Dir.RIGHT
+    }
 }

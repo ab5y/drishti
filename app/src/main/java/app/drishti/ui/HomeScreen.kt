@@ -2,6 +2,7 @@ package app.drishti.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import app.drishti.core.FlowScreen
 import app.drishti.core.Readiness
@@ -30,7 +32,8 @@ fun AppRoot(state: UiState, vm: MainViewModel, xdpi: Double) {
         // D44: unmapped and unused presses are always shown. Letter screens show it in the pad strip instead.
         val ready = state as? UiState.Ready
         val notice = ready?.inputNotice
-        if (notice != null && !(ready.screen == Screen.FLOW && ready.flow is FlowScreen.Letter)) {
+        val inPadStrip = ready?.flow is FlowScreen.Letter || ready?.flow is FlowScreen.RemoteLost
+        if (notice != null && !(ready.screen == Screen.FLOW && inPadStrip)) {
             Text(
                 notice,
                 color = Color.White,
@@ -67,9 +70,9 @@ private fun Screens(state: UiState, vm: MainViewModel, xdpi: Double) {
                 if (ready != null) DebugScreen(state.config, ready.pxPerMm, onBack = { vm.open(Screen.HOME) })
             }
             Screen.FLOW -> FlowHost(state, vm)
-            Screen.KEY_CAPTURE -> {
+            Screen.REMOTE_SETUP -> {
                 BackHandler { } // back is captured as a key; leave with Done
-                KeyCaptureScreen(state, vm)
+                RemoteSetupScreen(state, vm)
             }
         }
     }
@@ -91,7 +94,12 @@ private fun HomeScreen(state: UiState.Ready, vm: MainViewModel) {
     val ready = state.readiness is Readiness.Ready
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.safeDrawingPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Eye chart", style = MaterialTheme.typography.headlineSmall)
+            // Long-press opens Remote setup, kept out of the way of day-to-day use (D47).
+            Text(
+                "Eye chart",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { vm.open(Screen.REMOTE_SETUP) }) },
+            )
             Text("Far ${c.farDistanceMm.toInt()} mm · near ${c.nearDistanceMm.toInt()} mm · ${c.distanceMethod.wireName}")
             Text("${c.passMinCorrect} of ${c.optotypesPerLine} to pass a line")
 
@@ -112,9 +120,6 @@ private fun HomeScreen(state: UiState.Ready, vm: MainViewModel) {
             }
             Button(onClick = { vm.startTest() }, Modifier.fillMaxWidth(), enabled = ready) {
                 Text("Start screening")
-            }
-            OutlinedButton(onClick = { vm.open(Screen.KEY_CAPTURE) }, Modifier.fillMaxWidth()) {
-                Text("Remote key capture")
             }
             state.notice?.let { Text(it) }
             Text("Last remote key: ${state.lastKey ?: "none"}")

@@ -22,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.drishti.core.DisplaySize
 import app.drishti.core.usesTestDisplay
+import app.drishti.input.DeviceRef
 import app.drishti.input.GamepadMotion
 import kotlinx.coroutines.launch
 
@@ -107,7 +108,7 @@ class MainActivity : ComponentActivity() {
     // pre-IME hook is needed; consuming it stops Android making D-pad keys from it as well.
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (!GamepadMotion.isJoystickMove(event)) return super.dispatchGenericMotionEvent(event)
-        return viewModel.onMotion(event.deviceId, event.device?.name ?: "unknown", GamepadMotion.frames(event))
+        return viewModel.onMotion(event.deviceId, DeviceRef.of(event.device), GamepadMotion.frames(event))
     }
 
     private fun handleKey(event: KeyEvent): Boolean =
@@ -115,7 +116,7 @@ class MainActivity : ComponentActivity() {
             keyCode = event.keyCode,
             keyName = KeyEvent.keyCodeToString(event.keyCode),
             scanCode = event.scanCode,
-            deviceName = event.device?.name ?: "unknown",
+            device = DeviceRef.of(event.device),
             // Navigation-bar Back and the on-screen keyboard (D41).
             fromPhoneUi = event.flags and (KeyEvent.FLAG_VIRTUAL_HARD_KEY or KeyEvent.FLAG_SOFT_KEYBOARD) != 0,
             isDown = event.action == KeyEvent.ACTION_DOWN,

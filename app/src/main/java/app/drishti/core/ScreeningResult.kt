@@ -46,6 +46,8 @@ object ResultBuilder {
         results: Map<TestId, EngineResult>,
         light: LightReadings,
         trials: List<TrialRecord>,
+        /** Remote drops per test (D50). */
+        remoteDrops: Map<TestId, Int> = emptyMap(),
     ): ScreeningResult {
         val lightOk = light.ok(config.minLux)
         val perLine = config.optotypesPerLine
@@ -68,7 +70,12 @@ object ResultBuilder {
                 pinhole = pin,
                 pinholeImproved = improved,
                 pinholeText = pin?.let { ResultText.pinhole(far, it, improved, config) },
-                quality = ResultText.quality(far, config, config.farDistanceMm, light, lightOk, trials.filter { it.test == farId }),
+                quality = ResultText.quality(
+                    far, config, config.farDistanceMm, light, lightOk, trials.filter { it.test == farId },
+                    remoteDrops[farId] ?: 0,
+                ) + listOfNotNull(
+                    remoteDrops[pinId]?.let { "Pinhole test: " + ResultText.dropText(it).replaceFirstChar { c -> c.lowercase() } },
+                ),
             )
         }
 
@@ -80,7 +87,10 @@ object ResultBuilder {
             result = nearResult,
             decision = nearResult.decision,
             reason = ResultText.reason(nearResult, config.near, perLine),
-            quality = ResultText.quality(nearResult, config, config.nearDistanceMm, light, lightOk, trials.filter { it.test == nearId }),
+            quality = ResultText.quality(
+                nearResult, config, config.nearDistanceMm, light, lightOk, trials.filter { it.test == nearId },
+                remoteDrops[nearId] ?: 0,
+            ),
         )
 
         val parts = listOf("right eye" to right.decision, "left eye" to left.decision, "near" to near.decision)
@@ -178,6 +188,7 @@ object ResultText {
         light: LightReadings,
         lightOk: Boolean?,
         trials: List<TrialRecord>,
+        remoteDrops: Int = 0,
     ): List<String> = buildList {
         val q = r.quality
         val limitPct = fmt("%.0f", config.quality.maxUnsureFraction * 100)
@@ -201,6 +212,7 @@ object ResultText {
         add(lightLine(light, lightOk, config.minLux))
         val pad = trials.count { it.source == AnswerSource.PAD }
         if (pad > 0) add("Answers: $pad of ${trials.size} entered on the on-screen pad.")
+        if (remoteDrops > 0) add(dropText(remoteDrops))
         if (config.crowding.enabled) {
             val uncrowded = trials.count { !it.crowded }
             if (uncrowded > 0) add("$uncrowded of ${trials.size} letters were shown without crowding bars (the bars did not fit the screen).")
@@ -209,6 +221,11 @@ object ResultText {
             add("Letter size after pixel rounding: within ${fmt("%.1f", it * 100)}% of intended.")
         }
     }
+
+    /** D50: how often the remote dropped during one test. */
+    fun dropText(drops: Int): String =
+        "Remote: disconnected $drops ${if (drops == 1) "time" else "times"} during this test; " +
+            "any letter showing was withdrawn unscored and shown again."
 
     /** D38: both readings are shown; the lower one decides. */
     fun lightLine(light: LightReadings, lightOk: Boolean?, minLux: Double): String {

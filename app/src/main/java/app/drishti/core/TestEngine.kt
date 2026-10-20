@@ -118,6 +118,17 @@ class TestEngine(
     }
 
     /**
+     * Takes the presented letter back unscored (the remote dropped, D50). The
+     * next [next] shows the same slot with a new orientation.
+     */
+    fun withdraw() {
+        check(result == null) { "test is finished" }
+        checkNotNull(pending) { "no trial is being presented" }
+        pending = null
+        voided++
+    }
+
+    /**
      * Ends the test as INCONCLUSIVE when the presented letter cannot be drawn
      * (it does not fit the screen, or the renderer finds it pixel-limited).
      */

@@ -57,12 +57,15 @@ sealed interface FlowScreen {
     data class Prompt(val test: TestId, val text: PromptText) : FlowScreen
     data class Letter(val test: TestId, val trial: Trial, val render: OptotypeRender.Drawable, val crowded: Boolean) : FlowScreen
     data class AdjustDistance(val test: TestId) : FlowScreen
+    /** The remote dropped during [test] (D50): reconnect, tap the pad, or continue on screen. */
+    data class RemoteLost(val test: TestId) : FlowScreen
     data class Result(val result: ScreeningResult) : FlowScreen
 }
 
 /** Keep-screen-on and test brightness apply on these screens only. */
 val FlowScreen.usesTestDisplay: Boolean
-    get() = this is FlowScreen.Prompt || this is FlowScreen.Letter || this is FlowScreen.AdjustDistance
+    get() = this is FlowScreen.Prompt || this is FlowScreen.Letter || this is FlowScreen.AdjustDistance ||
+        this is FlowScreen.RemoteLost
 
 /**
  * The screening sequence: register -> (light warning) -> remote check -> far
@@ -93,6 +96,13 @@ class ScreeningFlow(
     /** False once the operator chose on-screen answers on the remote check. */
     var remoteAnswers: Boolean = true
         private set
+
+    /** Null until the UI first reports the remote; only a change from true to false is a drop (D50). */
+    private var remoteConnected: Boolean? = null
+
+    /** The remote dropped while no letter was up; the next test start pauses. */
+    private var dropPending = false
+    private val remoteDrops = LinkedHashMap<TestId, Int>()
 
     private val _trials = mutableListOf<TrialRecord>()
     val trials: List<TrialRecord> get() = _trials
@@ -152,6 +162,12 @@ class ScreeningFlow(
             InputResult.Used
         }
         is FlowScreen.AdjustDistance -> InputResult.NotUsed(PAUSED)
+        is FlowScreen.RemoteLost -> if (source == AnswerSource.PAD) {
+            resume()
+            InputResult.NotUsed(RESUMED_NOT_ANSWER)
+        } else {
+            InputResult.NotUsed(REMOTE_LOST_PRESS)
+        }
         FlowScreen.Register, is FlowScreen.Result -> InputResult.NotUsed(USE_SCREEN)
     }
 
@@ -162,6 +178,7 @@ class ScreeningFlow(
         is FlowScreen.RemoteCheck -> InputResult.NotUsed(CHECK_UNMAPPED)
         is FlowScreen.Letter -> InputResult.NotUsed(NOT_AN_ANSWER)
         is FlowScreen.AdjustDistance -> InputResult.NotUsed(PAUSED)
+        is FlowScreen.RemoteLost -> InputResult.NotUsed(REMOTE_LOST_PRESS)
         FlowScreen.Register, is FlowScreen.Result -> InputResult.NotUsed(USE_SCREEN)
     }
 
@@ -170,6 +187,39 @@ class ScreeningFlow(
         if (screen !is FlowScreen.RemoteCheck) return
         remoteAnswers = false
         nextTest()
+    }
+
+    /**
+     * Whether the remote is connected (D49, D50), from the device listener.
+     * In remote-answer mode a change from connected to not connected pauses
+     * the test: a letter that is up is withdrawn unscored. The test resumes
+     * at the same slot when the remote is back.
+     */
+    fun onRemoteConnection(connected: Boolean) {
+        val wasConnected = remoteConnected == true
+        remoteConnected = connected
+        if (connected) {
+            dropPending = false
+            if (screen is FlowScreen.RemoteLost) resume()
+            return
+        }
+        if (!wasConnected || !remoteAnswers) return
+        when (val s = screen) {
+            is FlowScreen.Letter -> {
+                checkNotNull(engine).withdraw()
+                pause(s.test)
+            }
+            is FlowScreen.AdjustDistance -> pause(s.test)
+            is FlowScreen.LightWarning, is FlowScreen.RemoteCheck, is FlowScreen.Prompt -> dropPending = true
+            FlowScreen.Register, is FlowScreen.RemoteLost, is FlowScreen.Result -> Unit
+        }
+    }
+
+    /** From the remote-lost pause: answers come from the on-screen pad from now on (D50). */
+    fun continueOnScreen() {
+        if (screen !is FlowScreen.RemoteLost) return
+        remoteAnswers = false
+        resume()
     }
 
     /** Called periodically while paused for distance. */
@@ -202,6 +252,21 @@ class ScreeningFlow(
             testStarted = true
             luxAtTestStart = readLux()
         }
+        if (dropPending && remoteAnswers) {
+            dropPending = false
+            pause(checkNotNull(current))
+        } else {
+            advance()
+        }
+    }
+
+    private fun pause(test: TestId) {
+        remoteDrops[test] = (remoteDrops[test] ?: 0) + 1
+        screen = FlowScreen.RemoteLost(test)
+    }
+
+    private fun resume() {
+        dropPending = false
         advance()
     }
 
@@ -268,7 +333,10 @@ class ScreeningFlow(
 
     private fun finish() {
         screen = FlowScreen.Result(
-            ResultBuilder.build(config, checkNotNull(patient), results, LightReadings(luxAtRegister, luxAtTestStart), trials.toList()),
+            ResultBuilder.build(
+                config, checkNotNull(patient), results, LightReadings(luxAtRegister, luxAtTestStart), trials.toList(),
+                remoteDrops.toMap(),
+            ),
         )
     }
 
@@ -280,6 +348,9 @@ class ScreeningFlow(
         const val CHECK_REMOTE_ONLY = "Press the buttons on the remote for this check."
         const val CHECK_UNMAPPED = "Not one of Up, Down, Left, Right, OK."
         const val NOT_AN_ANSWER = "Not an answer: use Up, Down, Left, Right or OK."
+        const val REMOTE_LOST = "Reconnect the remote, or tap the arrows on screen"
+        const val REMOTE_LOST_PRESS = "Paused: the remote disconnected. Press not used."
+        const val RESUMED_NOT_ANSWER = "Resumed. That tap was not an answer: tap the arrow for the letter now shown."
     }
 }
 

@@ -50,10 +50,13 @@ import app.drishti.core.Phase
 import app.drishti.core.Referral
 import app.drishti.core.RemoteAction
 import app.drishti.core.RemoteCheck
+import app.drishti.core.RemoteStatus
 import app.drishti.core.ResultText
+import app.drishti.core.ScreeningFlow
 import app.drishti.core.ScreeningResult
 import app.drishti.core.TestId
 import app.drishti.core.TestKind
+import app.drishti.input.KeyMap
 import kotlinx.coroutines.delay
 
 private const val DISTANCE_POLL_MS = 500L
@@ -73,8 +76,12 @@ private val PAD_EDGE = Color(0xFFE3E3E3)
 fun FlowHost(state: UiState.Ready, vm: MainViewModel) {
     val screen = state.flow ?: return
     // Back abandons the screening, but never while a letter or pause is up.
-    BackHandler(enabled = screen !is FlowScreen.Letter && screen !is FlowScreen.AdjustDistance) { vm.exitFlow() }
-    BackHandler(enabled = screen is FlowScreen.Letter || screen is FlowScreen.AdjustDistance) { }
+    val midTest = screen is FlowScreen.Letter || screen is FlowScreen.AdjustDistance || screen is FlowScreen.RemoteLost
+    BackHandler(enabled = !midTest) { vm.exitFlow() }
+    BackHandler(enabled = midTest) { }
+    // D49: the chip is hidden once answers come from the on-screen pad, and on the result.
+    val chip = state.remote.chipText(KeyMap.LOW_BATTERY).takeIf { state.remoteAnswers && screen !is FlowScreen.Result }
+    val chipBad = !state.remote.connected || state.remote.lowBattery(KeyMap.LOW_BATTERY)
 
     Box(Modifier.fillMaxSize().background(Color.White)) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -85,14 +92,36 @@ fun FlowHost(state: UiState.Ready, vm: MainViewModel) {
             when (screen) {
                 FlowScreen.Register -> RegisterScreen(state, vm)
                 is FlowScreen.LightWarning -> LightWarningScreen(screen, vm)
-                is FlowScreen.RemoteCheck -> RemoteCheckScreen(screen, vm)
+                is FlowScreen.RemoteCheck -> RemoteCheckScreen(screen, state.remote, vm)
                 is FlowScreen.Prompt -> PromptScreen(screen, vm)
-                is FlowScreen.Letter -> LetterScreen(screen, letterW, state.inputNotice, vm)
+                is FlowScreen.Letter -> LetterScreen(screen, letterW, state.inputNotice, chip, chipBad, vm)
                 is FlowScreen.AdjustDistance -> AdjustDistanceScreen(screen, vm)
+                is FlowScreen.RemoteLost -> RemoteLostScreen(letterW, state.inputNotice, chip, chipBad, vm)
                 is FlowScreen.Result -> ResultScreen(screen.result, vm)
+            }
+            // Letter screens carry the chip in the pad strip, so it never covers a letter.
+            if (chip != null && screen !is FlowScreen.Letter && screen !is FlowScreen.RemoteLost) {
+                RemoteChip(chip, chipBad, Modifier.align(Alignment.TopEnd).padding(12.dp))
             }
         }
     }
+}
+
+/** "Remote ✓" or "Remote ✗ - reconnect", with battery (D49, D51). */
+@Composable
+private fun RemoteChip(text: String, bad: Boolean, modifier: Modifier = Modifier, muted: Boolean = false) {
+    val color = when {
+        bad -> Color(0xFFB00020)
+        muted -> PAD_INK
+        else -> Color(0xFF1B6B3A)
+    }
+    Text(
+        text,
+        color = color,
+        fontSize = 12.sp,
+        lineHeight = 14.sp,
+        modifier = modifier.border(1.dp, color, RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -156,7 +185,7 @@ private fun LightWarningScreen(s: FlowScreen.LightWarning, vm: MainViewModel) {
 
 /** D42: every button the test needs must be seen from the remote before it answers anything. */
 @Composable
-private fun RemoteCheckScreen(s: FlowScreen.RemoteCheck, vm: MainViewModel) {
+private fun RemoteCheckScreen(s: FlowScreen.RemoteCheck, remote: RemoteStatus, vm: MainViewModel) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -182,6 +211,12 @@ private fun RemoteCheckScreen(s: FlowScreen.RemoteCheck, vm: MainViewModel) {
         s.lastWrong?.let { w ->
             Text("Got ${label(w)}, waiting for ${s.expected?.let(::label)}.", color = MaterialTheme.colorScheme.error)
         }
+        // D51: battery as Android reports it; warned below the low mark.
+        Text(
+            remote.batteryText(KeyMap.LOW_BATTERY),
+            color = if (remote.lowBattery(KeyMap.LOW_BATTERY)) MaterialTheme.colorScheme.error else Color.Black,
+            fontWeight = if (remote.lowBattery(KeyMap.LOW_BATTERY)) FontWeight.Bold else FontWeight.Normal,
+        )
         Text(
             "If the remote has no button for any of these, it cannot be used to answer. Use on-screen answers instead: " +
                 "the patient says or points to the answer and you tap it on the pad.",
@@ -199,7 +234,7 @@ private fun label(a: RemoteAction) = when (a) {
     RemoteAction.DOWN -> "Down"
     RemoteAction.LEFT -> "Left"
     RemoteAction.RIGHT -> "Right"
-    RemoteAction.OK -> "OK"
+    RemoteAction.OK -> "OK (Not sure)"
 }
 
 @Composable
@@ -216,7 +251,14 @@ private fun PromptScreen(s: FlowScreen.Prompt, vm: MainViewModel) {
  * whole pixels in the letter area; the muted answer pad sits in its own strip.
  */
 @Composable
-private fun LetterScreen(s: FlowScreen.Letter, letterWidthPx: Int, notice: String?, vm: MainViewModel) {
+private fun LetterScreen(
+    s: FlowScreen.Letter,
+    letterWidthPx: Int,
+    notice: String?,
+    chip: String?,
+    chipBad: Boolean,
+    vm: MainViewModel,
+) {
     val letterWidth = with(LocalDensity.current) { letterWidthPx.toDp() }
     Row(Modifier.fillMaxSize()) {
         Box(Modifier.width(letterWidth).fillMaxHeight()) {
@@ -232,18 +274,42 @@ private fun LetterScreen(s: FlowScreen.Letter, letterWidthPx: Int, notice: Strin
                 modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
             )
         }
-        AnswerPad(notice, onPress = vm::padPress, modifier = Modifier.fillMaxSize())
+        AnswerPad(notice, chip, chipBad, onPress = vm::padPress, modifier = Modifier.fillMaxSize())
+    }
+}
+
+/** D50: the remote dropped mid-test. The letter was withdrawn; nothing is scored until the test resumes. */
+@Composable
+private fun RemoteLostScreen(letterWidthPx: Int, notice: String?, chip: String?, chipBad: Boolean, vm: MainViewModel) {
+    val letterWidth = with(LocalDensity.current) { letterWidthPx.toDp() }
+    Row(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.width(letterWidth).fillMaxHeight().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(ScreeningFlow.REMOTE_LOST, style = MaterialTheme.typography.headlineSmall, color = Color.Black)
+            Text(
+                "The letter that was showing was taken back and not scored. The test goes on from the same place " +
+                    "when the remote reconnects, or when you tap an arrow (that tap is not an answer).",
+                color = Color.Black,
+            )
+            OutlinedButton(onClick = { vm.continueOnScreen() }) { Text("Continue on screen (no remote)") }
+        }
+        AnswerPad(notice, chip, chipBad, onPress = vm::padPress, modifier = Modifier.fillMaxSize())
     }
 }
 
 /** D43: the operator can enter the patient's answer. Muted so it does not draw the patient's eye. */
 @Composable
-private fun AnswerPad(notice: String?, onPress: (RemoteAction) -> Unit, modifier: Modifier) {
+private fun AnswerPad(notice: String?, chip: String?, chipBad: Boolean, onPress: (RemoteAction) -> Unit, modifier: Modifier) {
     Column(
         modifier.padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // Muted while all is well so it does not draw the patient's eye; red when it needs the operator.
+        chip?.let { RemoteChip(it, chipBad, muted = true) }
         PadKey("Up") { onPress(RemoteAction.UP) }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             PadKey("Left") { onPress(RemoteAction.LEFT) }

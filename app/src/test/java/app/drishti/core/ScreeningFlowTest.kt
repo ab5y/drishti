@@ -725,4 +725,175 @@ class ScreeningFlowTest {
         )
         assertTrue(missing.none { it.startsWith("Answers:") })
     }
+
+    // ---- remote drops mid-test (D50) ----------------------------------------------------
+
+    /** First prompt, remote seen connected, then OK: the practice letter is up. */
+    private fun toFirstLetter(f: ScreeningFlow = flow()): ScreeningFlow {
+        toFirstPrompt(f)
+        f.onRemoteConnection(true)
+        f.onAction(RemoteAction.OK)
+        check(f.screen is FlowScreen.Letter)
+        return f
+    }
+
+    @Test
+    fun `a drop with a letter up pauses and withdraws the letter unscored`() {
+        val f = toFirstLetter()
+        f.onAction((f.screen as FlowScreen.Letter).trial.orientation.action()) // practice
+        val shown = f.screen as FlowScreen.Letter
+        val before = f.trials.size
+
+        f.onRemoteConnection(false)
+        assertEquals(FlowScreen.RemoteLost(farR), f.screen)
+        assertEquals(before, f.trials.size)
+
+        f.onRemoteConnection(true)
+        val again = f.screen as FlowScreen.Letter
+        assertEquals(shown.trial.phase, again.trial.phase)
+        assertEquals(shown.trial.lineIndex, again.trial.lineIndex)
+        assertEquals(shown.trial.indexInLine, again.trial.indexInLine)
+        assertEquals(before, f.trials.size)
+    }
+
+    @Test
+    fun `presses while paused are never scored`() {
+        val f = toFirstLetter()
+        f.onRemoteConnection(false)
+        RemoteAction.entries.forEach {
+            assertEquals(InputResult.NotUsed(ScreeningFlow.REMOTE_LOST_PRESS), f.onAction(it, AnswerSource.REMOTE))
+        }
+        assertEquals(InputResult.NotUsed(ScreeningFlow.REMOTE_LOST_PRESS), f.onOtherPress())
+        f.poll()
+        assertEquals(FlowScreen.RemoteLost(farR), f.screen)
+        assertTrue(f.trials.isEmpty())
+    }
+
+    @Test
+    fun `a pad tap resumes but is not an answer`() {
+        val f = toFirstLetter()
+        f.onRemoteConnection(false)
+        assertEquals(InputResult.NotUsed(ScreeningFlow.RESUMED_NOT_ANSWER), f.onAction(RemoteAction.LEFT, AnswerSource.PAD))
+        assertTrue(f.screen is FlowScreen.Letter)
+        assertTrue(f.trials.isEmpty())
+        assertTrue(f.remoteAnswers)
+        // The next pad tap is an answer as usual.
+        assertEquals(InputResult.Used, f.onAction(RemoteAction.LEFT, AnswerSource.PAD))
+        assertEquals(1, f.trials.size)
+    }
+
+    @Test
+    fun `continue on screen resumes in on-screen answer mode`() {
+        val f = toFirstLetter()
+        f.onRemoteConnection(false)
+        f.continueOnScreen()
+        assertTrue(f.screen is FlowScreen.Letter)
+        assertFalse(f.remoteAnswers)
+        assertEquals(InputResult.NotUsed(ScreeningFlow.REMOTE_OFF), f.onAction(RemoteAction.UP))
+        // A later reconnect and drop change nothing in on-screen mode.
+        f.onRemoteConnection(true)
+        f.onRemoteConnection(false)
+        assertTrue(f.screen is FlowScreen.Letter)
+    }
+
+    @Test
+    fun `continue on screen does nothing unless paused for the remote`() {
+        val f = toFirstLetter()
+        val s = f.screen
+        f.continueOnScreen()
+        assertEquals(s, f.screen)
+        assertTrue(f.remoteAnswers)
+    }
+
+    @Test
+    fun `only a change from connected pauses`() {
+        // Never seen connected (the emulator, a remote that is not external): nothing pauses.
+        val f = toFirstPrompt(flow())
+        f.onRemoteConnection(false)
+        f.onAction(RemoteAction.OK)
+        assertTrue(f.screen is FlowScreen.Letter)
+        f.onRemoteConnection(false)
+        assertTrue(f.screen is FlowScreen.Letter)
+        // Connected twice in a row is not a change either.
+        f.onRemoteConnection(true)
+        f.onRemoteConnection(true)
+        assertTrue(f.screen is FlowScreen.Letter)
+    }
+
+    @Test
+    fun `on-screen answer mode ignores drops`() {
+        val f = flow()
+        assertTrue(f.register("SCH-1", "", goodLux).isEmpty())
+        f.onRemoteConnection(true)
+        f.useOnScreenAnswers()
+        f.onAction(RemoteAction.OK, AnswerSource.PAD)
+        f.onRemoteConnection(false)
+        assertTrue(f.screen is FlowScreen.Letter)
+    }
+
+    @Test
+    fun `a drop on a prompt pauses before the first letter, unless the remote came back`() {
+        val f = toFirstPrompt(flow())
+        f.onRemoteConnection(true)
+        f.onRemoteConnection(false)
+        assertTrue(f.screen is FlowScreen.Prompt)
+        f.onAction(RemoteAction.OK, AnswerSource.PAD)
+        assertEquals(FlowScreen.RemoteLost(farR), f.screen)
+        f.onRemoteConnection(true)
+        assertTrue(f.screen is FlowScreen.Letter)
+
+        val g = toFirstPrompt(flow())
+        g.onRemoteConnection(true)
+        g.onRemoteConnection(false)
+        g.onRemoteConnection(true)
+        g.onAction(RemoteAction.OK)
+        assertTrue(g.screen is FlowScreen.Letter)
+    }
+
+    @Test
+    fun `a drop while paused for distance waits for both`() {
+        val d = SwitchableDistance(null)
+        val f = toFirstPrompt(flow(distance = d))
+        f.onRemoteConnection(true)
+        f.onAction(RemoteAction.OK)
+        assertEquals(FlowScreen.AdjustDistance(farR), f.screen)
+        f.onRemoteConnection(false)
+        assertEquals(FlowScreen.RemoteLost(farR), f.screen)
+        f.onRemoteConnection(true)
+        assertEquals(FlowScreen.AdjustDistance(farR), f.screen)
+        d.mm = 3000.0
+        f.poll()
+        assertTrue(f.screen is FlowScreen.Letter)
+    }
+
+    @Test
+    fun `drops are counted per test and shown on the result`() {
+        val f = flow()
+        var dropped = 0
+        // Drop once on the third letter of each far test, reconnect straight away.
+        val d = drive(f) { id, t ->
+            if (id.kind == TestKind.FAR && t.phase == Phase.DESCENDING_LINES && t.indexInLine == 2 && dropped < 2 &&
+                f.trials.count { it.test == id && it.phase == Phase.DESCENDING_LINES } == 2
+            ) {
+                f.onRemoteConnection(true)
+                f.onRemoteConnection(false)
+                dropped++
+                assertEquals(FlowScreen.RemoteLost(id), f.screen)
+                f.onRemoteConnection(true)
+            }
+            (f.screen as FlowScreen.Letter).trial.orientation.action()
+        }.result
+        assertEquals(2, dropped)
+        assertEquals(Referral.PASS, d.right.decision)
+        assertTrue(d.right.quality.joinToString("\n"), d.right.quality.any { it.startsWith("Remote: disconnected 1 time during this test") })
+        assertTrue(d.left.quality.any { it.startsWith("Remote: disconnected 1 time") })
+        assertTrue(d.near.quality.none { it.startsWith("Remote:") })
+        // The withdrawn letters were never recorded.
+        assertEquals(d.right.far.quality.scoredResponses, d.trials.count { it.test == farR && it.phase == Phase.DESCENDING_LINES })
+    }
+
+    @Test
+    fun `the remote pause uses the test display`() {
+        assertTrue(FlowScreen.RemoteLost(farR).usesTestDisplay)
+    }
 }
