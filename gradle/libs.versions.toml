@@ -9,6 +9,7 @@ coreKtx = "1.19.1"
 room = "2.8.5"
 datastore = "1.2.1"
 serialization = "1.11.0"
+sqlite = "2.6.2"
 junit = "4.13.2"
 
 [libraries]
@@ -26,6 +27,8 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 junit = { module = "junit:junit", version.ref = "junit" }
+# JVM SQLite for the in-memory Room tests (D63); tests only.
+sqlite-bundled-jvm = { module = "androidx.sqlite:sqlite-bundled-jvm", version.ref = "sqlite" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

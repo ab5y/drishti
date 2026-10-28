@@ -1,5 +1,7 @@
 package app.drishti.ui
 
+import android.content.ClipData
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +15,7 @@ import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -63,6 +66,9 @@ class MainActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.state.collect(::applyWindow) }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.share.collect(::shareFiles) }
         }
     }
 
@@ -123,6 +129,22 @@ class MainActivity : ComponentActivity() {
             repeatCount = event.repeatCount,
             eventTimeMs = event.eventTime,
         )
+
+    /** D60: the share sheet, with read access granted only to the app the operator picks. */
+    private fun shareFiles(request: ShareRequest) {
+        val uris = request.files.map { FileProvider.getUriForFile(this, "$packageName.exports", it) }
+        if (uris.isEmpty()) return
+        val clip = ClipData.newRawUri(request.files.first().name, uris.first()).apply {
+            uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+        }
+        val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "text/csv"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+            clipData = clip
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(send, "Export screening records"))
+    }
 
     /** Full physical resolution in the current display mode, regardless of orientation or insets. */
     private fun realDisplaySize(): DisplaySize =

@@ -7,7 +7,8 @@ enum class Eye { RIGHT, LEFT, BOTH }
 /** One test run in the flow, e.g. far right eye, near both eyes, pinhole left eye. */
 data class TestId(val kind: TestKind, val eye: Eye)
 
-data class Patient(val token: String, val age: Int?)
+/** Non-PII (D56, D57): a generated token, an optional school or village code and an optional age. */
+data class Patient(val token: String, val schoolId: String?, val age: Int?)
 
 data class PromptText(val title: String, val lines: List<String>)
 
@@ -108,7 +109,12 @@ class ScreeningFlow(
     val trials: List<TrialRecord> get() = _trials
 
     private var viewport: Viewport? = null
-    private var patient: Patient? = null
+
+    /** Generated when registration opens, so the operator can write it down (D56). */
+    val token: String = SessionToken.generate(random)
+
+    var patient: Patient? = null
+        private set
     private var luxAtRegister: Double? = null
     private var luxAtTestStart: Double? = null
     private var testStarted = false
@@ -125,10 +131,10 @@ class ScreeningFlow(
     }
 
     /** Returns validation errors; on success moves to the light warning or the first prompt. */
-    fun register(token: String, ageText: String, lux: Double?): List<String> {
+    fun register(schoolIdText: String, ageText: String, lux: Double?): List<String> {
         check(screen == FlowScreen.Register) { "already registered" }
         if (viewport == null) return listOf("The test screen is not ready yet. Try again.")
-        val (p, errors) = Registration.validate(token, ageText)
+        val (p, errors) = Registration.validate(token, schoolIdText, ageText)
         if (p == null) return errors
 
         patient = p
@@ -335,7 +341,7 @@ class ScreeningFlow(
         screen = FlowScreen.Result(
             ResultBuilder.build(
                 config, checkNotNull(patient), results, LightReadings(luxAtRegister, luxAtTestStart), trials.toList(),
-                remoteDrops.toMap(),
+                remoteDrops.toMap(), remoteAnswers,
             ),
         )
     }
@@ -356,18 +362,34 @@ class ScreeningFlow(
 
 object Registration {
     const val MAX_TOKEN_LENGTH = 32
+    const val MAX_SCHOOL_ID_LENGTH = 32
     const val MAX_AGE = 120
+    private val SCHOOL_ID_CHARS = Regex("^[\\p{L}\\p{M}\\p{Nd} /_-]+$")
 
-    /** Token is required (non-identifying tag, no names); age is optional. */
-    fun validate(token: String, ageText: String): Pair<Patient?, List<String>> {
+    /**
+     * The token is generated (D56). The school or village ID is optional; it
+     * must be a code with a digit, so a plain name is refused (D57). Age is optional.
+     */
+    fun validate(token: String, schoolIdText: String, ageText: String): Pair<Patient?, List<String>> {
         val errors = mutableListOf<String>()
         val t = token.trim()
-        if (t.isEmpty()) errors += "Enter a token (a code, not a name)."
+        if (t.isEmpty()) errors += "Missing token."
         if (t.length > MAX_TOKEN_LENGTH) errors += "Token must be at most $MAX_TOKEN_LENGTH characters."
+        val school = schoolIdText.trim().ifEmpty { null }
+        if (school != null) {
+            when {
+                school.length > MAX_SCHOOL_ID_LENGTH ->
+                    errors += "School or village ID: at most $MAX_SCHOOL_ID_LENGTH characters."
+                !SCHOOL_ID_CHARS.matches(school) ->
+                    errors += "School or village ID: use letters, digits, spaces, - / or _ only."
+                school.none { it.isDigit() } ->
+                    errors += "School or village ID: use a code with at least one digit, not a name."
+            }
+        }
         val a = ageText.trim()
         val age = if (a.isEmpty()) null else a.toIntOrNull()
         if (a.isNotEmpty() && (age == null || age !in 0..MAX_AGE)) errors += "Age must be a whole number from 0 to $MAX_AGE, or blank."
-        return if (errors.isEmpty()) Patient(t, age) to emptyList() else null to errors
+        return if (errors.isEmpty()) Patient(t, school, age) to emptyList() else null to errors
     }
 }
 

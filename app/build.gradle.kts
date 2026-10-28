@@ -1,5 +1,23 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+/**
+ * The decisions.md revision stamped on every record (D54): the git short hash
+ * of the last commit that changed it, or, without git, its highest decision number.
+ */
+val decisionsRev: String = run {
+    val hash = runCatching {
+        providers.exec {
+            commandLine("git", "log", "-1", "--format=%h", "--", "docs/decisions.md")
+            workingDir = rootDir
+            isIgnoreExitValue = true
+        }.standardOutput.asText.get().trim()
+    }.getOrDefault("")
+    hash.ifEmpty {
+        val text = rootProject.file("docs/decisions.md").takeIf { it.exists() }?.readText().orEmpty()
+        Regex("""^### (D\d+)\.""", RegexOption.MULTILINE).findAll(text).lastOrNull()?.groupValues?.get(1) ?: "unknown"
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -17,6 +35,7 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "DECISIONS_REV", "\"$decisionsRev\"")
     }
 
     buildTypes {
@@ -32,6 +51,12 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    testOptions {
+        // The Room DAO tests pass an empty Context stub; an in-memory database never uses it (D63).
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -64,4 +89,5 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
+    testImplementation(libs.sqlite.bundled.jvm)
 }

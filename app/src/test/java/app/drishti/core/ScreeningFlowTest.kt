@@ -184,9 +184,9 @@ class ScreeningFlowTest {
     // ---- registration, light, remote check, prompts and keys ----------------------------------
 
     @Test
-    fun `registration takes a token and optional age only`() {
+    fun `registration takes an optional school ID and optional age only`() {
         val f = flow()
-        assertTrue(f.register("  ", "", goodLux).isNotEmpty())
+        assertTrue(f.register("Ravi", "", goodLux).isNotEmpty())
         assertTrue(f.register("SCH-1", "abc", goodLux).isNotEmpty())
         assertTrue(f.register("SCH-1", "150", goodLux).isNotEmpty())
         assertEquals(FlowScreen.Register, f.screen)

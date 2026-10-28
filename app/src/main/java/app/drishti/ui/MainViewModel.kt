@@ -3,6 +3,24 @@ package app.drishti.ui
 import android.app.Application
 import android.os.SystemClock
 import android.view.KeyEvent
+import app.drishti.BuildConfig
+import app.drishti.core.RecordStamp
+import app.drishti.core.RemoteMappingText
+import app.drishti.core.SavedSession
+import app.drishti.core.ScreeningResult
+import app.drishti.core.SessionRecord
+import app.drishti.core.SessionRecords
+import app.drishti.data.RecordsRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.receiveAsFlow
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
 import android.view.MotionEvent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -53,7 +71,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-enum class Screen { HOME, CALIBRATION, DEBUG, FLOW, REMOTE_SETUP }
+enum class Screen { HOME, CALIBRATION, DEBUG, FLOW, REMOTE_SETUP, RECORDS }
+
+/** Saving the finished screening (D55). */
+sealed interface SaveStatus {
+    data object Saving : SaveStatus
+    data object Saved : SaveStatus
+    data class Failed(val reason: String) : SaveStatus
+}
+
+/** One record opened on the Records screen (D61). */
+data class RecordDetail(val record: SessionRecord, val trialCount: Int)
+
+/** Files for the share sheet (D60); the activity starts it. */
+data class ShareRequest(val files: List<File>)
 
 /**
  * One logged press on Remote setup (D47). [input] is what can be assigned:
@@ -101,6 +132,15 @@ sealed interface UiState {
         val remote: RemoteStatus = RemoteStatus(connected = false, battery = null),
         /** False once the operator chose on-screen answers: the remote chip is hidden (D49). */
         val remoteAnswers: Boolean = true,
+        /** This screening's generated token (D56). */
+        val token: String? = null,
+        val save: SaveStatus? = null,
+        /** Newest first (D61). */
+        val records: List<SessionRecord> = emptyList(),
+        /** Set when the records cannot be read (for example an old development database, D53). */
+        val recordsError: String? = null,
+        val selected: Set<String> = emptySet(),
+        val detail: RecordDetail? = null,
     ) : UiState
 }
 
@@ -109,6 +149,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val light = AmbientLightSensor(app)
     private val remoteStore = RemoteStore(app)
     private val inputDevices = InputDevices(app)
+    private val records = RecordsRepository(app)
+    private var configSha256 = ""
     private val mapping = RemoteMapping(KeyMap.DEFAULTS)
     private val display = MutableStateFlow<DisplaySize?>(null)
     private val debouncer = KeyDebouncer(KeyMap.DEBOUNCE_MS)
@@ -116,6 +158,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var deviceId: String? = null
     private var flow: ScreeningFlow? = null
     private var noticeJob: Job? = null
+
+    /** pxPerMm the current flow was started with, for the record stamp (D54). */
+    private var flowPxPerMm = 0.0
+
+    /** The last device whose press the flow used (D54). */
+    private var lastRemote: DeviceRef? = null
+
+    /** The flow whose result has been handed to [saveResult], so it is saved once. */
+    private var savedFlow: ScreeningFlow? = null
+
+    /** The record being saved, kept for "Try saving again" (D55). */
+    private var pendingSave: SavedSession? = null
+
+    private val _share = Channel<ShareRequest>(Channel.BUFFERED)
+    val share: Flow<ShareRequest> = _share.receiveAsFlow()
 
     private val _state = MutableStateFlow<UiState>(UiState.Loading)
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -130,11 +187,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        val config = try {
+        val loaded = try {
             ConfigRepository(app).load()
         } catch (e: ConfigException) {
             null.also { _state.value = UiState.ConfigError(e.errors) }
         }
+        val config = loaded?.config
+        if (loaded != null) configSha256 = loaded.sha256
         if (config != null) {
             _state.value = UiState.Ready(config, lightSensorAvailable = light.available)
             viewModelScope.launch {
@@ -159,6 +218,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         syncRemote()
                     }
             }
+            viewModelScope.launch {
+                records.sessions
+                    .catch { e -> updateReady { it.copy(recordsError = "Records cannot be opened: ${e.message ?: e.javaClass.simpleName}") } }
+                    .collect { list -> updateReady { s -> s.copy(records = list, recordsError = null, selected = s.selected.filter { id -> list.any { it.sessionId == id } }.toSet()) } }
+            }
+            // Old export files are removed at start (D60).
+            viewModelScope.launch { runCatching { records.clearExports() } }
             viewModelScope.launch {
                 // Battery changes are not always announced by the listener, so re-read them (D51).
                 while (true) {
@@ -185,6 +251,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 notice = null,
                 captured = if (capture) emptyList() else s.captured,
                 liveMotion = if (capture) null else s.liveMotion,
+                detail = null,
             )
         }
     }
@@ -223,6 +290,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             return
         }
+        flowPxPerMm = r.pxPerMm
+        lastRemote = null
+        pendingSave = null
         flow = ScreeningFlow(
             s.config, r.pxPerMm, FixedDistance.from(s.config), Random.Default,
             clock = SystemClock::uptimeMillis,
@@ -232,7 +302,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
         light.start()
         inputDevices.refresh()
-        updateReady { it.copy(screen = Screen.FLOW, notice = null, registerErrors = emptyList()) }
+        updateReady { it.copy(screen = Screen.FLOW, notice = null, registerErrors = emptyList(), save = null) }
         syncRemote()
         publishFlow()
     }
@@ -255,9 +325,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         flow?.setViewport(widthPx, heightPx)
     }
 
-    fun register(token: String, age: String) {
+    fun register(schoolId: String, age: String) {
         val f = flow ?: return
-        val errors = f.register(token, age, light.lux.value)
+        val errors = f.register(schoolId, age, light.lux.value)
         updateReady { it.copy(registerErrors = errors) }
         publishFlow()
     }
@@ -284,15 +354,145 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun exitFlow() {
         flow = null
+        pendingSave = null
         light.stop()
-        updateReady { it.copy(screen = Screen.HOME, flow = null) }
+        updateReady { it.copy(screen = Screen.HOME, flow = null, save = null, token = null) }
     }
 
     private fun publishFlow() {
         val f = flow
         val screen = f?.screen
         if (screen is FlowScreen.Result) light.stop()
-        updateReady { it.copy(flow = screen, remoteAnswers = f?.remoteAnswers ?: true) }
+        updateReady { it.copy(flow = screen, remoteAnswers = f?.remoteAnswers ?: true, token = f?.token) }
+        if (f != null && screen is FlowScreen.Result && savedFlow !== f) {
+            savedFlow = f
+            saveResult(f, screen.result)
+        }
+    }
+
+    // ---- saving (D55) --------------------------------------------------------------------
+
+    /** Saves the result once, in the background. A failure is shown, never thrown. */
+    private fun saveResult(f: ScreeningFlow, result: ScreeningResult) {
+        val saved = try {
+            buildRecord(f, result)
+        } catch (e: Exception) {
+            updateReady { it.copy(save = SaveStatus.Failed(reason(e))) }
+            return
+        }
+        pendingSave = saved
+        write(saved)
+    }
+
+    fun retrySave() {
+        val saved = pendingSave ?: return
+        write(saved)
+    }
+
+    private fun write(saved: SavedSession) {
+        updateReady { it.copy(save = SaveStatus.Saving) }
+        viewModelScope.launch {
+            val status = try {
+                records.save(saved)
+                pendingSave = null
+                SaveStatus.Saved
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SaveStatus.Failed(reason(e))
+            }
+            // Only report it if the operator is still on this screening's result.
+            updateReady { s -> if (s.flow is FlowScreen.Result) s.copy(save = status) else s }
+        }
+    }
+
+    private fun buildRecord(f: ScreeningFlow, result: ScreeningResult): SavedSession {
+        val s = _state.value as UiState.Ready
+        val now = System.currentTimeMillis()
+        // The station remote if set, else the last device the flow used; none if answers came from the pad (D54).
+        val remote: Pair<String, String?>? = when {
+            !f.remoteAnswers -> null
+            s.station != null -> s.station.name to s.station.descriptor
+            else -> lastRemote?.let { it.name to it.descriptor }
+        }
+        val profile = remote?.second?.let { s.profiles.forRemote(RemoteKey(it, remote.first)) }
+        val stamp = RecordStamp(
+            appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            configSchemaVersion = s.config.schemaVersion,
+            configSha256 = configSha256,
+            pxPerMm = flowPxPerMm,
+            deviceId = deviceId ?: "unknown",
+            remoteName = remote?.first ?: "none",
+            remoteMapping = if (remote == null) "none" else RemoteMappingText.describe(profile, ::inputLabel),
+            decisionsRev = BuildConfig.DECISIONS_REV,
+        )
+        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT).format(Date(now))
+        return SessionRecords.build(UUID.randomUUID().toString(), now, timestamp, result, stamp)
+    }
+
+    private fun reason(e: Exception) = e.message?.take(200) ?: e.javaClass.simpleName
+
+    // ---- records (D61) --------------------------------------------------------------------
+
+    fun openRecord(id: String) {
+        viewModelScope.launch {
+            val detail = try {
+                records.session(id)?.let { RecordDetail(it, records.trialCount(id)) }
+            } catch (e: Exception) {
+                notify("Could not open the record: ${reason(e)}")
+                null
+            }
+            updateReady { it.copy(detail = detail) }
+        }
+    }
+
+    fun closeRecord() = updateReady { it.copy(detail = null) }
+
+    fun toggleSelected(id: String) = updateReady {
+        it.copy(selected = if (id in it.selected) it.selected - id else it.selected + id)
+    }
+
+    fun deleteRecord(id: String) {
+        viewModelScope.launch {
+            try {
+                records.delete(id)
+                updateReady { it.copy(detail = null, selected = it.selected - id) }
+                notify("Record deleted.")
+            } catch (e: Exception) {
+                notify("Could not delete: ${reason(e)}")
+            }
+        }
+    }
+
+    fun deleteAllRecords() {
+        viewModelScope.launch {
+            try {
+                records.deleteAll()
+                updateReady { it.copy(detail = null, selected = emptySet()) }
+                notify("All records deleted.")
+            } catch (e: Exception) {
+                notify("Could not delete: ${reason(e)}")
+            }
+        }
+    }
+
+    /** Writes the two CSVs for the selected records, or all if [all], and opens the share sheet (D60). */
+    fun export(all: Boolean) {
+        val s = _state.value as? UiState.Ready ?: return
+        val ids = if (all) null else s.selected.toList()
+        if (ids != null && ids.isEmpty()) {
+            notify("Select records to export first.")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                _share.send(ShareRequest(records.export(ids, System.currentTimeMillis())))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notify("Export failed: ${reason(e)}")
+            }
+        }
     }
 
     /** The flow screen where presses go to the flow (registration keeps normal key handling). */
@@ -338,7 +538,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (f != null && debouncer.accept(eventTimeMs)) report(f.onOtherPress(), label) else notify(label)
             return consume
         }
-        if (debouncer.accept(eventTimeMs)) press(action)
+        if (debouncer.accept(eventTimeMs)) press(action, device)
         return true
     }
 
@@ -357,12 +557,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** A mapped press from the remote, by key or axis (already debounced). */
-    private fun press(action: RemoteAction) {
+    private fun press(action: RemoteAction, device: DeviceRef) {
         val s = _state.value as? UiState.Ready ?: return
         val f = flowTakesPresses(s)
         when {
             f != null -> {
-                report(f.onAction(action, AnswerSource.REMOTE), prefix = null)
+                val result = f.onAction(action, AnswerSource.REMOTE)
+                if (result == InputResult.Used) lastRemote = device
+                report(result, prefix = null)
                 publishFlow()
             }
             s.screen == Screen.FLOW -> notify(ScreeningFlow.USE_SCREEN)
@@ -400,7 +602,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     continue
                 }
                 when (resolved) {
-                    is Resolved.Mapped -> press(resolved.action)
+                    is Resolved.Mapped -> press(resolved.action, device)
                     Resolved.Unmapped -> otherPress("Unmapped: ${inputLabel(checkNotNull(input))}", fr.eventTimeMs)
                     null -> otherPress(DIAGONAL, fr.eventTimeMs)
                 }
@@ -416,7 +618,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 when {
                     capture -> capture(Captured(device, input, "%s %.2f".format(v.name, v.value), gives(resolved)))
                     // An axis the operator mapped: the latch has no debouncer, so it shares the keys' one.
-                    resolved is Resolved.Mapped -> if (debouncer.accept(fr.eventTimeMs)) press(resolved.action)
+                    resolved is Resolved.Mapped -> if (debouncer.accept(fr.eventTimeMs)) press(resolved.action, device)
                     else -> otherPress("Unmapped: ${inputLabel(input)}", fr.eventTimeMs)
                 }
             }

@@ -37,6 +37,10 @@ data class ScreeningResult(
     /** Rope distance: confirmed by the operator on each prompt (D31). */
     val distanceOk: Boolean,
     val trials: List<TrialRecord>,
+    /** Remote drops per test (D50). */
+    val remoteDrops: Map<TestId, Int> = emptyMap(),
+    /** False if the operator switched to on-screen answers. */
+    val remoteAnswers: Boolean = true,
 )
 
 object ResultBuilder {
@@ -48,6 +52,7 @@ object ResultBuilder {
         trials: List<TrialRecord>,
         /** Remote drops per test (D50). */
         remoteDrops: Map<TestId, Int> = emptyMap(),
+        remoteAnswers: Boolean = true,
     ): ScreeningResult {
         val lightOk = light.ok(config.minLux)
         val perLine = config.optotypesPerLine
@@ -101,7 +106,9 @@ object ResultBuilder {
                 parts.filter { it.second == Referral.REFER }.joinToString(", ") { it.first } + ")."
             Referral.INCONCLUSIVE -> ResultText.OVERALL_INCONCLUSIVE
         }
-        return ScreeningResult(patient, right, left, near, overall, overallText, light, lightOk, distanceOk = true, trials)
+        return ScreeningResult(
+            patient, right, left, near, overall, overallText, light, lightOk, distanceOk = true, trials, remoteDrops, remoteAnswers,
+        )
     }
 
     /** D28: any REFER -> REFER; else any INCONCLUSIVE -> INCONCLUSIVE; else PASS. */

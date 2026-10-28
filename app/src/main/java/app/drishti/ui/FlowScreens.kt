@@ -22,12 +22,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +50,7 @@ import app.drishti.core.EyeOutcome
 import app.drishti.core.FlowScreen
 import app.drishti.core.Phase
 import app.drishti.core.Referral
+import app.drishti.core.Registration
 import app.drishti.core.RemoteAction
 import app.drishti.core.RemoteCheck
 import app.drishti.core.RemoteStatus
@@ -97,7 +100,7 @@ fun FlowHost(state: UiState.Ready, vm: MainViewModel) {
                 is FlowScreen.Letter -> LetterScreen(screen, letterW, state.inputNotice, chip, chipBad, vm)
                 is FlowScreen.AdjustDistance -> AdjustDistanceScreen(screen, vm)
                 is FlowScreen.RemoteLost -> RemoteLostScreen(letterW, state.inputNotice, chip, chipBad, vm)
-                is FlowScreen.Result -> ResultScreen(screen.result, vm)
+                is FlowScreen.Result -> ResultScreen(screen.result, state.save, vm)
             }
             // Letter screens carry the chip in the pad strip, so it never covers a letter.
             if (chip != null && screen !is FlowScreen.Letter && screen !is FlowScreen.RemoteLost) {
@@ -126,16 +129,28 @@ private fun RemoteChip(text: String, bad: Boolean, modifier: Modifier = Modifier
 
 @Composable
 private fun RegisterScreen(state: UiState.Ready, vm: MainViewModel) {
-    var token by remember { mutableStateOf("") }
+    var schoolId by remember { mutableStateOf("") }
     var age by remember { mutableStateOf("") }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Register", style = MaterialTheme.typography.headlineSmall, color = Color.Black)
-        Text("Token only: a code for this person. Do not enter a name.", color = Color.Black)
+        // D56: the token is generated; the operator writes it on the child's card.
+        Text(
+            "Token: ${state.token ?: "…"}",
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.Black,
+            fontWeight = FontWeight.Bold,
+        )
+        Text("Write this token on the child's card. It links the card to this screening.", color = Color.Black)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(token, { token = it }, label = { Text("Token") }, singleLine = true, modifier = Modifier.width(260.dp))
+            OutlinedTextField(
+                schoolId, { schoolId = it.take(Registration.MAX_SCHOOL_ID_LENGTH) },
+                label = { Text("School or village ID (optional)") },
+                supportingText = { Text("Do not enter a name. Use a code with a digit.", color = MaterialTheme.colorScheme.error) },
+                singleLine = true, modifier = Modifier.width(320.dp),
+            )
             OutlinedTextField(
                 age, { age = it.filter(Char::isDigit).take(3) }, label = { Text("Age (optional)") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(160.dp),
@@ -152,7 +167,7 @@ private fun RegisterScreen(state: UiState.Ready, vm: MainViewModel) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { vm.exitFlow() }) { Text("Cancel") }
-            Button(onClick = { vm.register(token, age) }) { Text("Start screening") }
+            Button(onClick = { vm.register(schoolId, age) }) { Text("Start screening") }
         }
     }
 }
@@ -360,13 +375,29 @@ private fun AdjustDistanceScreen(s: FlowScreen.AdjustDistance, vm: MainViewModel
 }
 
 @Composable
-private fun ResultScreen(r: ScreeningResult, vm: MainViewModel) {
+private fun ResultScreen(r: ScreeningResult, save: SaveStatus?, vm: MainViewModel) {
+    var confirmLeave by remember { mutableStateOf(false) }
+    val done = { if (save is SaveStatus.Failed) confirmLeave = true else vm.exitFlow() }
+    if (confirmLeave) {
+        AlertDialog(
+            onDismissRequest = { confirmLeave = false },
+            title = { Text("Result not saved") },
+            text = { Text("This result was not saved. Leave anyway? Write it down first.") },
+            confirmButton = { TextButton(onClick = { confirmLeave = false; vm.exitFlow() }) { Text("Leave without saving") } },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Stay") } },
+        )
+    }
     Surface(Modifier.fillMaxSize(), color = Color.White) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Screening result · token ${r.patient.token}" + (r.patient.age?.let { " · age $it" } ?: ""), color = Color.Black)
+            SaveLine(save, vm)
+            Text(
+                "Screening result · token ${r.patient.token}" + (r.patient.schoolId?.let { " · ID $it" } ?: "") +
+                    (r.patient.age?.let { " · age $it" } ?: ""),
+                color = Color.Black,
+            )
             Text(r.overallText, style = MaterialTheme.typography.headlineSmall, color = colorFor(r.overall), fontWeight = FontWeight.Bold)
             Text("This is a screening result, not a diagnosis.", style = MaterialTheme.typography.bodySmall, color = Color.Black)
             EyeCard(r.right)
@@ -378,8 +409,24 @@ private fun ResultScreen(r: ScreeningResult, vm: MainViewModel) {
                 null,
                 r.near.quality,
             )
-            Text("Not saved: saving records comes in a later stage.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            Button(onClick = { vm.exitFlow() }) { Text("Done") }
+            Button(onClick = done) { Text("Done") }
+        }
+    }
+}
+
+/** D55: the save never blocks the result; a failure is shown with a retry. */
+@Composable
+private fun SaveLine(save: SaveStatus?, vm: MainViewModel) {
+    when (save) {
+        null, SaveStatus.Saving -> Text("Saving…", color = Color.Gray)
+        SaveStatus.Saved -> Text("Saved on this phone.", color = Color(0xFF1B6B3A))
+        is SaveStatus.Failed -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "NOT SAVED: ${save.reason}. Write this result down.",
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Bold,
+            )
+            OutlinedButton(onClick = { vm.retrySave() }) { Text("Try saving again") }
         }
     }
 }

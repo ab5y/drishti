@@ -70,6 +70,10 @@ private fun Screens(state: UiState, vm: MainViewModel, xdpi: Double) {
                 if (ready != null) DebugScreen(state.config, ready.pxPerMm, onBack = { vm.open(Screen.HOME) })
             }
             Screen.FLOW -> FlowHost(state, vm)
+            Screen.RECORDS -> {
+                BackHandler { if (state.detail != null) vm.closeRecord() else vm.open(Screen.HOME) }
+                RecordsScreen(state, vm)
+            }
             Screen.REMOTE_SETUP -> {
                 BackHandler { } // back is captured as a key; leave with Done
                 RemoteSetupScreen(state, vm)
@@ -120,6 +124,9 @@ private fun HomeScreen(state: UiState.Ready, vm: MainViewModel) {
             }
             Button(onClick = { vm.startTest() }, Modifier.fillMaxWidth(), enabled = ready) {
                 Text("Start screening")
+            }
+            OutlinedButton(onClick = { vm.open(Screen.RECORDS) }, Modifier.fillMaxWidth()) {
+                Text("Records (${state.records.size})")
             }
             state.notice?.let { Text(it) }
             Text("Last remote key: ${state.lastKey ?: "none"}")
