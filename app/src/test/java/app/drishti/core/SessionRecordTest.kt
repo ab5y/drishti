@@ -42,7 +42,7 @@ class SessionRecordTest {
     private fun screen(schoolId: String = "SCH-14", age: String = "9"): Pair<ScreeningFlow, ScreeningResult> {
         val f = ScreeningFlow(config, 400 / 25.4, FixedDistance.from(config), Random(3), { 0L }, { 300.0 }, 0)
         f.setViewport(2400, 1080)
-        assertTrue(f.register(schoolId, age, 120.0).isEmpty())
+        assertTrue(f.register(schoolId, age, 120.0, consent = true).isEmpty())
         f.onRemoteConnection(true)
         var dropped = false
         var padded = false
@@ -89,13 +89,13 @@ class SessionRecordTest {
         val f = ScreeningFlow(config, 15.0, FixedDistance.from(config), Random(1), { 0L }, { null }, 0)
         val token = f.token
         f.setViewport(2400, 1080)
-        assertTrue(f.register("", "", 100.0).isEmpty())
+        assertTrue(f.register("", "", 100.0, consent = true).isEmpty())
         assertEquals(token, f.patient?.token)
     }
 
     @Test
     fun `school ID is optional, a code with a digit, never a plain word`() {
-        fun errors(id: String) = Registration.validate("ABC-234", id, "").second
+        fun errors(id: String) = Registration.validate("ABC-234", id, "", consent = true).second
         assertTrue(errors("").isEmpty())
         assertTrue(errors("   ").isEmpty())
         assertTrue(errors("SCH-14").isEmpty())
@@ -106,9 +106,20 @@ class SessionRecordTest {
         assertTrue(errors("A".repeat(32) + "1").isNotEmpty())
         assertTrue(errors("=1+1").isNotEmpty())
         assertTrue(errors("sch,14").isNotEmpty())
-        val (p, _) = Registration.validate("ABC-234", "  SCH-14 ", "")
+        val (p, _) = Registration.validate("ABC-234", "  SCH-14 ", "", consent = true)
         assertEquals("SCH-14", p?.schoolId)
-        assertNull(Registration.validate("ABC-234", " ", "").first?.schoolId)
+        assertNull(Registration.validate("ABC-234", " ", "", consent = true).first?.schoolId)
+    }
+
+    @Test
+    fun `no consent tick, no patient (D65)`() {
+        val (p, errors) = Registration.validate("ABC-234", "SCH-14", "9", consent = false)
+        assertNull(p)
+        assertEquals(listOf(Registration.CONSENT_MISSING), errors)
+        // Every problem is listed at once, consent first.
+        val all = Registration.validate("ABC-234", "Ravi", "abc", consent = false).second
+        assertEquals(Registration.CONSENT_MISSING, all.first())
+        assertEquals(3, all.size)
     }
 
     // ---- the record (D53, D54) -----------------------------------------------------------
@@ -123,6 +134,7 @@ class SessionRecordTest {
         assertEquals(f.token, r.token)
         assertEquals("SCH-14", r.schoolId)
         assertEquals(9, r.age)
+        assertEquals(true, r.consent)
         assertEquals(result.overall, r.overall)
         assertEquals(result.overallText, r.overallText)
 

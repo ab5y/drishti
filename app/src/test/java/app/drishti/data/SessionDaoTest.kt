@@ -40,7 +40,7 @@ class SessionDaoTest {
 
     private fun record(id: String, createdAtMs: Long, schoolId: String? = "SCH-1") = SessionRecord(
         sessionId = id, createdAtMs = createdAtMs, timestamp = "2026-10-20T10:00:00+05:30", token = "ABC-234",
-        schoolId = schoolId, age = null, overall = Referral.REFER, overallText = "REFER (right eye).",
+        schoolId = schoolId, age = null, consent = true, overall = Referral.REFER, overallText = "REFER (right eye).",
         rightReferral = Referral.REFER, rightLogMAR = null, rightAcuity = "no line passed", rightReason = "r",
         rightResponsesOk = true, rightScored = 5, rightUnsure = 0, rightQuality = "q1 | q2", rightRemoteDrops = 1,
         rightPinholeRun = true, rightPinholeReferral = Referral.PASS, rightPinholeLogMAR = 0.3, rightPinholeImproved = true,

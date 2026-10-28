@@ -43,7 +43,7 @@ class ScreeningFlowTest {
 
     /** Registers with good light and passes the remote check: the first prompt is up. */
     private fun toFirstPrompt(f: ScreeningFlow): ScreeningFlow {
-        assertTrue(f.register("SCH-1", "", goodLux).isEmpty())
+        assertTrue(f.register("SCH-1", "", goodLux, consent = true).isEmpty())
         passCheck(f)
         return f
     }
@@ -77,7 +77,7 @@ class ScreeningFlowTest {
         source: (TestId, Trial) -> AnswerSource = { _, _ -> AnswerSource.REMOTE },
         responder: (TestId, Trial) -> RemoteAction,
     ): Driven {
-        assertTrue(f.register("SCH-014", "9", lux).isEmpty())
+        assertTrue(f.register("SCH-014", "9", lux, consent = true).isEmpty())
         val prompts = mutableListOf<TestId>()
         val letters = mutableListOf<FlowScreen.Letter>()
         repeat(100_000) {
@@ -186,26 +186,37 @@ class ScreeningFlowTest {
     @Test
     fun `registration takes an optional school ID and optional age only`() {
         val f = flow()
-        assertTrue(f.register("Ravi", "", goodLux).isNotEmpty())
-        assertTrue(f.register("SCH-1", "abc", goodLux).isNotEmpty())
-        assertTrue(f.register("SCH-1", "150", goodLux).isNotEmpty())
+        assertTrue(f.register("Ravi", "", goodLux, consent = true).isNotEmpty())
+        assertTrue(f.register("SCH-1", "abc", goodLux, consent = true).isNotEmpty())
+        assertTrue(f.register("SCH-1", "150", goodLux, consent = true).isNotEmpty())
         assertEquals(FlowScreen.Register, f.screen)
-        assertTrue(f.register("SCH-1", "", goodLux).isEmpty())
+        assertTrue(f.register("SCH-1", "", goodLux, consent = true).isEmpty())
         assertTrue(f.screen is FlowScreen.RemoteCheck)
+    }
+
+    @Test
+    fun `registration needs the consent tick (D65)`() {
+        val f = flow()
+        val errors = f.register("SCH-1", "9", goodLux, consent = false)
+        assertTrue(errors.any { it.contains("consent") })
+        assertEquals(FlowScreen.Register, f.screen)
+        assertNull(f.patient)
+        assertTrue(f.register("SCH-1", "9", goodLux, consent = true).isEmpty())
+        assertEquals(true, f.patient?.consent)
     }
 
     @Test
     fun `registration needs the test viewport first`() {
         val f = flow(viewport = null)
-        assertTrue(f.register("SCH-1", "", goodLux).isNotEmpty())
+        assertTrue(f.register("SCH-1", "", goodLux, consent = true).isNotEmpty())
         f.setViewport(2400, 1080)
-        assertTrue(f.register("SCH-1", "", goodLux).isEmpty())
+        assertTrue(f.register("SCH-1", "", goodLux, consent = true).isEmpty())
     }
 
     @Test
     fun `low light warns but the operator can continue`() {
         val f = flow()
-        f.register("SCH-1", "", 20.0)
+        f.register("SCH-1", "", 20.0, consent = true)
         val w = f.screen as FlowScreen.LightWarning
         assertEquals(20.0, w.lux!!, 0.0)
         assertEquals(50.0, w.minLux, 0.0)
@@ -221,7 +232,7 @@ class ScreeningFlowTest {
     fun `no light sensor is unknown, warned, not blocking`() {
         startLux = null
         val f = flow()
-        f.register("SCH-1", "", null)
+        f.register("SCH-1", "", null, consent = true)
         assertTrue(f.screen is FlowScreen.LightWarning)
         val d = drive(flow(), lux = null, responder = perfect)
         assertNull(d.result.lightOk)
@@ -268,7 +279,7 @@ class ScreeningFlowTest {
     @Test
     fun `remote check ticks Up, Down, Left, Right, OK in order`() {
         val f = flow()
-        f.register("SCH-1", "", goodLux)
+        f.register("SCH-1", "", goodLux, consent = true)
         assertEquals(FlowScreen.RemoteCheck(ticked = 0, lastWrong = null), f.screen)
         assertEquals(InputResult.Used, f.onAction(RemoteAction.UP))
         assertEquals(FlowScreen.RemoteCheck(ticked = 1, lastWrong = null), f.screen)
@@ -290,7 +301,7 @@ class ScreeningFlowTest {
     @Test
     fun `on-screen taps do not tick the remote check`() {
         val f = flow()
-        f.register("SCH-1", "", goodLux)
+        f.register("SCH-1", "", goodLux, consent = true)
         assertTrue(f.onAction(RemoteAction.UP, AnswerSource.PAD) is InputResult.NotUsed)
         assertEquals(0, (f.screen as FlowScreen.RemoteCheck).ticked)
     }
@@ -298,7 +309,7 @@ class ScreeningFlowTest {
     @Test
     fun `a remote that fails the check is never used for answers`() {
         val f = flow(TestConfigs.with("far.practice_trials" to 0))
-        f.register("SCH-1", "", goodLux)
+        f.register("SCH-1", "", goodLux, consent = true)
         f.onAction(RemoteAction.UP)
         f.onAction(RemoteAction.DOWN) // no LEFT on this remote
         f.useOnScreenAnswers()
@@ -349,7 +360,7 @@ class ScreeningFlowTest {
     @Test
     fun `any press leaves the light warning`() {
         val f = flow()
-        f.register("SCH-1", "", 5.0)
+        f.register("SCH-1", "", 5.0, consent = true)
         assertEquals(InputResult.Used, f.onOtherPress())
         assertTrue(f.screen is FlowScreen.RemoteCheck)
     }
@@ -368,7 +379,7 @@ class ScreeningFlowTest {
     fun `remote presses on a prompt wait for the dwell, on-screen taps do not`() {
         val f = flow(promptMinShowMs = 800)
         nowMs = 10_000
-        f.register("SCH-1", "", 5.0) // light warning appears at 10 000
+        f.register("SCH-1", "", 5.0, consent = true) // light warning appears at 10 000
         nowMs = 10_500
         assertEquals(InputResult.NotUsed(ScreeningFlow.WAIT_PROMPT), f.onOtherPress())
         assertTrue(f.screen is FlowScreen.LightWarning)
@@ -823,7 +834,7 @@ class ScreeningFlowTest {
     @Test
     fun `on-screen answer mode ignores drops`() {
         val f = flow()
-        assertTrue(f.register("SCH-1", "", goodLux).isEmpty())
+        assertTrue(f.register("SCH-1", "", goodLux, consent = true).isEmpty())
         f.onRemoteConnection(true)
         f.useOnScreenAnswers()
         f.onAction(RemoteAction.OK, AnswerSource.PAD)

@@ -81,7 +81,7 @@ class CsvTest {
         val config = TestConfigs.shipped()
         val f = ScreeningFlow(config, 400 / 25.4, FixedDistance.from(config), Random(id.hashCode()), { 0L }, { 200.0 }, 0)
         f.setViewport(2400, 1080)
-        f.register(schoolId ?: "", "", 200.0)
+        f.register(schoolId ?: "", "", 200.0, consent = true)
         repeat(100_000) {
             when (val s = f.screen) {
                 is FlowScreen.RemoteCheck -> RemoteCheck.ORDER.forEach { f.onAction(it) }
@@ -107,6 +107,7 @@ class CsvTest {
         val header = sessions.first().split(",")
         assertEquals(SessionCsv.SESSION_HEADER, header)
         assertEquals("session_id", header.first())
+        assertEquals(header.indexOf("age") + 1, header.indexOf("consent"))
         assertTrue(header.containsAll(listOf("token", "school_id", "overall", "right_logmar", "remote_name", "remote_mapping", "config_sha256", "decisions_rev", "right_remote_drops")))
         assertEquals(3, sessions.size)
         assertTrue(sessions[1].startsWith("s-a,"))

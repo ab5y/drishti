@@ -7,8 +7,11 @@ enum class Eye { RIGHT, LEFT, BOTH }
 /** One test run in the flow, e.g. far right eye, near both eyes, pinhole left eye. */
 data class TestId(val kind: TestKind, val eye: Eye)
 
-/** Non-PII (D56, D57): a generated token, an optional school or village code and an optional age. */
-data class Patient(val token: String, val schoolId: String?, val age: Int?)
+/**
+ * Non-PII (D56, D57): a generated token, an optional school or village code and an optional age.
+ * [consent] is the operator's consent tick (D65); registration refuses without it.
+ */
+data class Patient(val token: String, val schoolId: String?, val age: Int?, val consent: Boolean)
 
 data class PromptText(val title: String, val lines: List<String>)
 
@@ -131,10 +134,10 @@ class ScreeningFlow(
     }
 
     /** Returns validation errors; on success moves to the light warning or the first prompt. */
-    fun register(schoolIdText: String, ageText: String, lux: Double?): List<String> {
+    fun register(schoolIdText: String, ageText: String, lux: Double?, consent: Boolean): List<String> {
         check(screen == FlowScreen.Register) { "already registered" }
         if (viewport == null) return listOf("The test screen is not ready yet. Try again.")
-        val (p, errors) = Registration.validate(token, schoolIdText, ageText)
+        val (p, errors) = Registration.validate(token, schoolIdText, ageText, consent)
         if (p == null) return errors
 
         patient = p
@@ -366,12 +369,18 @@ object Registration {
     const val MAX_AGE = 120
     private val SCHOOL_ID_CHARS = Regex("^[\\p{L}\\p{M}\\p{Nd} /_-]+$")
 
+    /** Placeholder wording (D65): the screening program must supply its own consent text. */
+    const val CONSENT_LABEL = "Consent obtained for this child"
+    const val CONSENT_MISSING = "Tick that consent was obtained for this child before starting."
+
     /**
-     * The token is generated (D56). The school or village ID is optional; it
-     * must be a code with a digit, so a plain name is refused (D57). Age is optional.
+     * Consent must be ticked (D65). The token is generated (D56). The school or
+     * village ID is optional; it must be a code with a digit, so a plain name is
+     * refused (D57). Age is optional. Every problem is listed, consent first.
      */
-    fun validate(token: String, schoolIdText: String, ageText: String): Pair<Patient?, List<String>> {
+    fun validate(token: String, schoolIdText: String, ageText: String, consent: Boolean): Pair<Patient?, List<String>> {
         val errors = mutableListOf<String>()
+        if (!consent) errors += CONSENT_MISSING
         val t = token.trim()
         if (t.isEmpty()) errors += "Missing token."
         if (t.length > MAX_TOKEN_LENGTH) errors += "Token must be at most $MAX_TOKEN_LENGTH characters."
@@ -389,7 +398,7 @@ object Registration {
         val a = ageText.trim()
         val age = if (a.isEmpty()) null else a.toIntOrNull()
         if (a.isNotEmpty() && (age == null || age !in 0..MAX_AGE)) errors += "Age must be a whole number from 0 to $MAX_AGE, or blank."
-        return if (errors.isEmpty()) Patient(t, school, age) to emptyList() else null to errors
+        return if (errors.isEmpty()) Patient(t, school, age, consent) to emptyList() else null to errors
     }
 }
 

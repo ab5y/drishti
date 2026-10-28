@@ -22,8 +22,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
@@ -131,6 +134,7 @@ private fun RemoteChip(text: String, bad: Boolean, modifier: Modifier = Modifier
 private fun RegisterScreen(state: UiState.Ready, vm: MainViewModel) {
     var schoolId by remember { mutableStateOf("") }
     var age by remember { mutableStateOf("") }
+    var consent by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -144,6 +148,14 @@ private fun RegisterScreen(state: UiState.Ready, vm: MainViewModel) {
             fontWeight = FontWeight.Bold,
         )
         Text("Write this token on the child's card. It links the card to this screening.", color = Color.Black)
+        // D65: placeholder wording until the screening program supplies its consent text.
+        Row(
+            Modifier.toggleable(value = consent, role = Role.Checkbox, onValueChange = { consent = it }),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = consent, onCheckedChange = null)
+            Text(Registration.CONSENT_LABEL, color = Color.Black)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 schoolId, { schoolId = it.take(Registration.MAX_SCHOOL_ID_LENGTH) },
@@ -167,7 +179,7 @@ private fun RegisterScreen(state: UiState.Ready, vm: MainViewModel) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { vm.exitFlow() }) { Text("Cancel") }
-            Button(onClick = { vm.register(schoolId, age) }) { Text("Start screening") }
+            Button(onClick = { vm.register(schoolId, age, consent) }) { Text("Start screening") }
         }
     }
 }

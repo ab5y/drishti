@@ -60,6 +60,7 @@ object SessionCsv {
         "token" to { r -> t(r.token) },
         "school_id" to { r -> t(r.schoolId) },
         "age" to { r -> n(r.age) },
+        "consent" to { r -> b(r.consent) },
         "overall" to { r -> e(r.overall) },
         "overall_text" to { r -> t(r.overallText) },
     ) + eye("right", { it.rightReferral }, { it.rightLogMAR }, { it.rightAcuity }, { it.rightReason }, { it.rightResponsesOk },

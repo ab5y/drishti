@@ -1,0 +1,542 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "cf494422f71e96d8eb458fb4a0ffdad7",
+    "entities": [
+      {
+        "tableName": "sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` TEXT NOT NULL, `createdAtMs` INTEGER NOT NULL, `timestamp` TEXT NOT NULL, `token` TEXT NOT NULL, `schoolId` TEXT, `age` INTEGER, `consent` INTEGER, `overall` TEXT NOT NULL, `overallText` TEXT NOT NULL, `rightReferral` TEXT NOT NULL, `rightLogMAR` REAL, `rightAcuity` TEXT NOT NULL, `rightReason` TEXT NOT NULL, `rightResponsesOk` INTEGER NOT NULL, `rightScored` INTEGER NOT NULL, `rightUnsure` INTEGER NOT NULL, `rightQuality` TEXT NOT NULL, `rightRemoteDrops` INTEGER NOT NULL, `rightPinholeRun` INTEGER NOT NULL, `rightPinholeReferral` TEXT, `rightPinholeLogMAR` REAL, `rightPinholeImproved` INTEGER, `rightPinholeText` TEXT, `rightPinholeRemoteDrops` INTEGER NOT NULL, `leftReferral` TEXT NOT NULL, `leftLogMAR` REAL, `leftAcuity` TEXT NOT NULL, `leftReason` TEXT NOT NULL, `leftResponsesOk` INTEGER NOT NULL, `leftScored` INTEGER NOT NULL, `leftUnsure` INTEGER NOT NULL, `leftQuality` TEXT NOT NULL, `leftRemoteDrops` INTEGER NOT NULL, `leftPinholeRun` INTEGER NOT NULL, `leftPinholeReferral` TEXT, `leftPinholeLogMAR` REAL, `leftPinholeImproved` INTEGER, `leftPinholeText` TEXT, `leftPinholeRemoteDrops` INTEGER NOT NULL, `nearReferral` TEXT NOT NULL, `nearLogMAR` REAL, `nearAcuity` TEXT NOT NULL, `nearReason` TEXT NOT NULL, `nearResponsesOk` INTEGER NOT NULL, `nearScored` INTEGER NOT NULL, `nearUnsure` INTEGER NOT NULL, `nearQuality` TEXT NOT NULL, `nearRemoteDrops` INTEGER NOT NULL, `distanceOk` INTEGER NOT NULL, `lightOk` INTEGER, `responsesOk` INTEGER NOT NULL, `luxAtRegister` REAL, `luxAtTestStart` REAL, `remoteAnswers` INTEGER NOT NULL, `appVersion` TEXT NOT NULL, `configSchemaVersion` INTEGER NOT NULL, `configSha256` TEXT NOT NULL, `pxPerMm` REAL NOT NULL, `deviceId` TEXT NOT NULL, `remoteName` TEXT NOT NULL, `remoteMapping` TEXT NOT NULL, `decisionsRev` TEXT NOT NULL, `synced` INTEGER NOT NULL, PRIMARY KEY(`sessionId`))",
+        "fields": [
+          {
+            "fieldPath": "record.sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.createdAtMs",
+            "columnName": "createdAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.timestamp",
+            "columnName": "timestamp",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.token",
+            "columnName": "token",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.schoolId",
+            "columnName": "schoolId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "record.age",
+            "columnName": "age",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "record.consent",
+            "columnName": "consent",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "record.overall",
+            "columnName": "overall",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.overallText",
+            "columnName": "overallText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightReferral",
+            "columnName": "rightReferral",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightLogMAR",
+            "columnName": "rightLogMAR",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "record.rightAcuity",
+            "columnName": "rightAcuity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightReason",
+            "columnName": "rightReason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightResponsesOk",
+            "columnName": "rightResponsesOk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightScored",
+            "columnName": "rightScored",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightUnsure",
+            "columnName": "rightUnsure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightQuality",
+            "columnName": "rightQuality",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightRemoteDrops",
+            "columnName": "rightRemoteDrops",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightPinholeRun",
+            "columnName": "rightPinholeRun",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.rightPinholeReferral",
+            "columnName": "rightPinholeReferral",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "record.rightPinholeLogMAR",
+            "columnName": "rightPinholeLogMAR",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "record.rightPinholeImproved",
+            "columnName": "rightPinholeImproved",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "record.rightPinholeText",
+            "columnName": "rightPinholeText",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "record.rightPinholeRemoteDrops",
+            "columnName": "rightPinholeRemoteDrops",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftReferral",
+            "columnName": "leftReferral",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftLogMAR",
+            "columnName": "leftLogMAR",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "record.leftAcuity",
+            "columnName": "leftAcuity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftReason",
+            "columnName": "leftReason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftResponsesOk",
+            "columnName": "leftResponsesOk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftScored",
+            "columnName": "leftScored",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftUnsure",
+            "columnName": "leftUnsure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftQuality",
+            "columnName": "leftQuality",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftRemoteDrops",
+            "columnName": "leftRemoteDrops",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftPinholeRun",
+            "columnName": "leftPinholeRun",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.leftPinholeReferral",
+            "columnName": "leftPinholeReferral",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "record.leftPinholeLogMAR",
+            "columnName": "leftPinholeLogMAR",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "record.leftPinholeImproved",
+            "columnName": "leftPinholeImproved",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "record.leftPinholeText",
+            "columnName": "leftPinholeText",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "record.leftPinholeRemoteDrops",
+            "columnName": "leftPinholeRemoteDrops",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearReferral",
+            "columnName": "nearReferral",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearLogMAR",
+            "columnName": "nearLogMAR",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "record.nearAcuity",
+            "columnName": "nearAcuity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearReason",
+            "columnName": "nearReason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearResponsesOk",
+            "columnName": "nearResponsesOk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearScored",
+            "columnName": "nearScored",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearUnsure",
+            "columnName": "nearUnsure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearQuality",
+            "columnName": "nearQuality",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.nearRemoteDrops",
+            "columnName": "nearRemoteDrops",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.distanceOk",
+            "columnName": "distanceOk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.lightOk",
+            "columnName": "lightOk",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "record.responsesOk",
+            "columnName": "responsesOk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.luxAtRegister",
+            "columnName": "luxAtRegister",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "record.luxAtTestStart",
+            "columnName": "luxAtTestStart",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "record.remoteAnswers",
+            "columnName": "remoteAnswers",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.appVersion",
+            "columnName": "appVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.configSchemaVersion",
+            "columnName": "configSchemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.configSha256",
+            "columnName": "configSha256",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.pxPerMm",
+            "columnName": "pxPerMm",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.remoteName",
+            "columnName": "remoteName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.remoteMapping",
+            "columnName": "remoteMapping",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.decisionsRev",
+            "columnName": "decisionsRev",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "record.synced",
+            "columnName": "synced",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sessionId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sessions_createdAtMs",
+            "unique": false,
+            "columnNames": [
+              "createdAtMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sessions_createdAtMs` ON `${TABLE_NAME}` (`createdAtMs`)"
+          }
+        ]
+      },
+      {
+        "tableName": "trials",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` TEXT NOT NULL, `seq` INTEGER NOT NULL, `test` TEXT NOT NULL, `eye` TEXT NOT NULL, `phase` TEXT NOT NULL, `logMAR` REAL NOT NULL, `orientation` TEXT NOT NULL, `response` TEXT NOT NULL, `correct` INTEGER NOT NULL, `unsure` INTEGER NOT NULL, `counted` INTEGER NOT NULL, `distanceMm` REAL NOT NULL, `intendedMm` REAL NOT NULL, `drawnMm` REAL NOT NULL, `strokePx` INTEGER NOT NULL, `sizeError` REAL NOT NULL, `crowded` INTEGER NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`sessionId`, `seq`), FOREIGN KEY(`sessionId`) REFERENCES `sessions`(`sessionId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "row.sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.seq",
+            "columnName": "seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.test",
+            "columnName": "test",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.eye",
+            "columnName": "eye",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.phase",
+            "columnName": "phase",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.logMAR",
+            "columnName": "logMAR",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.orientation",
+            "columnName": "orientation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.response",
+            "columnName": "response",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.correct",
+            "columnName": "correct",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.unsure",
+            "columnName": "unsure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.counted",
+            "columnName": "counted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.distanceMm",
+            "columnName": "distanceMm",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.intendedMm",
+            "columnName": "intendedMm",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.drawnMm",
+            "columnName": "drawnMm",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.strokePx",
+            "columnName": "strokePx",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.sizeError",
+            "columnName": "sizeError",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.crowded",
+            "columnName": "crowded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sessionId",
+            "seq"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_trials_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trials_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "sessionId"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'cf494422f71e96d8eb458fb4a0ffdad7')"
+    ]
+  }
+}

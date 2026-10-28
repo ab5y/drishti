@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.drishti.core.DisplaySize
+import app.drishti.core.FlowScreen
 import app.drishti.core.usesTestDisplay
 import app.drishti.input.DeviceRef
 import app.drishti.input.GamepadMotion
@@ -77,7 +78,10 @@ class MainActivity : ComponentActivity() {
         viewModel.setDisplay(realDisplaySize())
     }
 
-    /** Landscape + full screen for the test flow; test brightness and keep-awake while testing (D33). */
+    /**
+     * Landscape + full screen for the test flow; test brightness and keep-awake while testing (D33);
+     * FLAG_SECURE on the result and records screens (D64).
+     */
     private fun applyWindow(state: UiState) {
         // Re-claim focus if a screen change left nothing focused (see onCreate).
         if (root.findFocus() == null) root.requestFocus()
@@ -105,6 +109,12 @@ class MainActivity : ComponentActivity() {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+
+        // D64: no screenshots or recents thumbnail of results and records; every other screen stays open.
+        val secure = ready?.screen == Screen.RECORDS || (inFlow && ready.flow is FlowScreen.Result)
+        val isSecure = window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
+        if (secure && !isSecure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (!secure && isSecure) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     // Fallback for keys that do not pass through the focused view chain.

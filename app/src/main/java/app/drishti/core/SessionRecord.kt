@@ -38,6 +38,8 @@ data class SessionRecord(
     val token: String,
     val schoolId: String?,
     val age: Int?,
+    /** The consent tick (D65). Always true for new sessions; null for sessions saved before it existed (D66). */
+    val consent: Boolean?,
     val overall: Referral,
     val overallText: String,
 
@@ -148,6 +150,7 @@ object SessionRecords {
             token = r.patient.token,
             schoolId = r.patient.schoolId,
             age = r.patient.age,
+            consent = r.patient.consent,
             overall = r.overall,
             overallText = r.overallText,
 

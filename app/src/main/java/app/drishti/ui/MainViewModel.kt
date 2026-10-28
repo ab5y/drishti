@@ -325,9 +325,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         flow?.setViewport(widthPx, heightPx)
     }
 
-    fun register(schoolId: String, age: String) {
+    fun register(schoolId: String, age: String, consent: Boolean) {
         val f = flow ?: return
-        val errors = f.register(schoolId, age, light.lux.value)
+        val errors = f.register(schoolId, age, light.lux.value, consent)
         updateReady { it.copy(registerErrors = errors) }
         publishFlow()
     }
