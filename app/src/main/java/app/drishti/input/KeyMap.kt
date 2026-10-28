@@ -14,9 +14,7 @@ import app.drishti.core.RemoteAction
 object KeyMap {
     val TABLE: Map<Int, RemoteAction> = mapOf(
         KeyEvent.KEYCODE_DPAD_UP to RemoteAction.UP,
-        KeyEvent.KEYCODE_VOLUME_UP to RemoteAction.UP,
         KeyEvent.KEYCODE_DPAD_DOWN to RemoteAction.DOWN,
-        KeyEvent.KEYCODE_VOLUME_DOWN to RemoteAction.DOWN,
         KeyEvent.KEYCODE_DPAD_LEFT to RemoteAction.LEFT,
         KeyEvent.KEYCODE_DPAD_RIGHT to RemoteAction.RIGHT,
         KeyEvent.KEYCODE_DPAD_CENTER to RemoteAction.OK,

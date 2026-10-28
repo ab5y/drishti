@@ -47,6 +47,14 @@ fun RemoteSetupScreen(state: UiState.Ready, vm: MainViewModel) {
                         "too; use Done to leave.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                // D68: Android handles Home before any app sees it, so no screen can capture it.
+                Text(
+                    "Some remotes send Home from a button (the VR BOX does from B in game mode). " +
+                        "Home always leaves the app: Android does not let any app block it. Do not use that " +
+                        "button; if it is pressed, reopen the app from recent apps.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
                 Button(onClick = { vm.open(Screen.HOME) }) { Text("Done") }
             }
 

@@ -9,9 +9,12 @@ import android.util.DisplayMetrics
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
@@ -33,6 +36,9 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private lateinit var root: FrameLayout
+
+    /** API 33+: the do-nothing Back callback while [BackGuard] blocks Back (D68). */
+    private var backSwallower: Any? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,6 +121,40 @@ class MainActivity : ComponentActivity() {
         val isSecure = window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
         if (secure && !isSecure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         if (!secure && isSecure) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
+        if (Build.VERSION.SDK_INT >= 33) setBackSwallowed(blocksBack(state))
+    }
+
+    private fun blocksBack(state: UiState?): Boolean {
+        val ready = state as? UiState.Ready ?: return false
+        return BackGuard.blocks(ready.screen, ready.flow)
+    }
+
+    /**
+     * D68: Back does nothing on Remote setup or a letter. Normally the key never
+     * gets here (handleKey consumes it); this covers any other route to Back.
+     */
+    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
+    override fun onBackPressed() {
+        if (blocksBack(viewModel.state.value)) return
+        super.onBackPressed()
+    }
+
+    /**
+     * D68: on API 33+, Back can reach the window as a callback instead of a key
+     * (predictive back). A top-priority callback that does nothing stops it.
+     */
+    @RequiresApi(33)
+    private fun setBackSwallowed(swallow: Boolean) {
+        val current = backSwallower as OnBackInvokedCallback?
+        if (swallow && current == null) {
+            val callback = OnBackInvokedCallback { }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, callback)
+            backSwallower = callback
+        } else if (!swallow && current != null) {
+            onBackInvokedDispatcher.unregisterOnBackInvokedCallback(current)
+            backSwallower = null
+        }
     }
 
     // Fallback for keys that do not pass through the focused view chain.
