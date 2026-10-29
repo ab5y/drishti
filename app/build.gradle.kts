@@ -33,14 +33,31 @@ android {
         applicationId = "app.drishti"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI derives these from the release tag vMAJOR.MINOR.PATCH (versionCode = MAJOR*10000 +
+        // MINOR*100 + PATCH) and passes -PappVersionCode / -PappVersionName; local builds fall back.
+        versionCode = (findProperty("appVersionCode") as String?)?.toInt() ?: 1
+        versionName = (findProperty("appVersionName") as String?) ?: "0.1.0"
         buildConfigField("String", "DECISIONS_REV", "\"$decisionsRev\"")
+    }
+
+    // Release signing comes from environment variables (set by the GitHub workflow).
+    // Without them the release APK is left unsigned and will not install.
+    val releaseKeystore = System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 
