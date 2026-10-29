@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0   # app/build.gradle.kts stamps the git hash of docs/decisions.md
+          fetch-depth: 0   # full history for the git-based build stamps
 
       # AGP 9.4.1 needs JDK 17 or newer to run.
       - uses: actions/setup-java@v5
@@ -77,7 +77,8 @@ jobs:
           echo "versionName=$VERSION versionCode=$VERSION_CODE"
           ./gradlew assembleRelease \
             -PappVersionName="$VERSION" \
-            -PappVersionCode="$VERSION_CODE"
+            -PappVersionCode="$VERSION_CODE" \
+            -PdecisionsRev="${GITHUB_SHA::7}"
 
       # Signed output is app-release.apk; without a signing config AGP writes app-release-unsigned.apk.
       - name: Stage stable-named APK and checksum

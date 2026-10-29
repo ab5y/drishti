@@ -3,8 +3,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 /**
  * The decisions.md revision stamped on every record (D54): the git short hash
  * of the last commit that changed it, or, without git, its highest decision number.
+ * -PdecisionsRev overrides it (the release workflow passes the commit's short hash).
  */
-val decisionsRev: String = run {
+val decisionsRev: String = (findProperty("decisionsRev") as String?)?.takeIf { it.isNotBlank() } ?: run {
     val hash = runCatching {
         providers.exec {
             commandLine("git", "log", "-1", "--format=%h", "--", "docs/decisions.md")
