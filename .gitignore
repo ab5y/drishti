@@ -12,3 +12,9 @@ captures/
 *.jks
 *.keystore
 keystore.properties
+
+# Private, kept locally only
+CLAUDE.md
+docs/case.pdf
+docs/build-sheet.pdf
+docs/clicker.pdf
